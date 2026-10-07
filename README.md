@@ -9,14 +9,24 @@ trên 7.935 tin đăng bán nhà tại Bình Thạnh, Gò Vấp và Phú Nhuận
 
 ---
 
-## 1. Ba chức năng
+## 1. Ứng dụng dành cho ai
 
-| Trang | Nội dung |
+Người dùng chọn vai khi vào app, và các mục sẽ đổi theo vai đó.
+
+| Vai | Mục chính | Nội dung |
+|---|---|---|
+| **Tôi đang bán nhà** | Định giá nhà của tôi | Điền thông tin căn nhà để nhận giá tham khảo kèm khoảng hợp lý. Nhập thêm mức giá định rao để biết nó nằm ở đâu so với thị trường |
+| **Tôi đang tìm mua nhà** | Kiểm tra một tin đăng | Nhập thông tin tin đăng cùng giá người bán đưa ra, nhận kết luận giá có bất thường hay không kèm gợi ý nên kiểm tra thêm điều gì |
+
+Hai mục còn lại dùng chung cho cả hai vai:
+
+| Mục | Nội dung |
 |---|---|
-| **Định giá nhà** | Nhập thông tin căn nhà, nhận giá gợi ý kèm khoảng tin cậy tính theo sai số thực đo của từng phân khúc giá |
-| **Kiểm tra giá bất thường** | Chấm điểm một tin đăng theo 4 tín hiệu độc lập rồi đưa ra kết luận kèm giải thích từng tín hiệu |
-| **Phân tích dữ liệu** | 19 biểu đồ từ notebook phân tích, chia ba nhóm: khảo sát dữ liệu, mô hình định giá, phát hiện bất thường, mỗi biểu đồ kèm diễn giải |
-| **Bảng điều khiển** | Phân bố điểm bất thường toàn bộ 7.935 tin, thống kê theo quận, hàng đợi kiểm duyệt, và kế hoạch giám sát sau triển khai |
+| **Mặt bằng giá khu vực** | Chọn quận để xem khoảng giá từng phường và phường nào đang nhích giá |
+| **Về ứng dụng** | Viết cho người thường đọc: số liệu đến từ đâu, chính xác tới đâu, khi nào không nên tin. Phần kỹ thuật đặt trong mục mở rộng cho ai quan tâm |
+
+Toàn bộ nội dung viết theo hướng **giải quyết việc của người dùng**, không trình
+bày quy trình xây dựng mô hình.
 
 ## 2. Mô hình đứng sau
 
@@ -101,6 +111,12 @@ altair
 Lưu ý rằng `price_model.joblib` và `isolation_forest.joblib` được tạo bằng
 scikit-learn 1.9 và xgboost 3.4. Nếu Streamlit Cloud cài phiên bản khác hẳn thì có thể
 hiện cảnh báo lúc nạp mô hình.
+
+## Minh hoạ trong ứng dụng
+
+Ảnh đầu trang và các thẻ chọn vai (nhà phố, biển rao bán, kính lúp soi giá) đều do nhóm **tự vẽ bằng matplotlib**,
+mã nguồn nằm trong `draw_art.py`. Không dùng ảnh hay logo của bên thứ ba, nên
+không vướng vấn đề bản quyền khi công khai repository.
 
 ---
 

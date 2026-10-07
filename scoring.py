@@ -1,9 +1,9 @@
-"""Bước 6 — lớp suy luận dùng chung cho ứng dụng web.
+"""Lớp suy luận dùng chung cho ứng dụng web.
 
 Nhận thông tin một tin đăng, dựng đủ 49 tính năng mà mô hình cần, rồi trả về
 giá gợi ý và điểm bất thường.
 
-Mọi thang chuẩn hoá đều đọc từ models/metadata.json — chính là thang đã dùng
+Mọi thang chuẩn hoá đều đọc từ models/metadata.json, chính là thang đã dùng
 khi chấm điểm cả lô 7 935 tin ở notebook 03. Nếu tính lại thang tại thời điểm
 chạy, điểm của một tin mới sẽ không so sánh được với lịch sử.
 """
