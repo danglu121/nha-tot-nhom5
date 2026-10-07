@@ -44,7 +44,7 @@ quả như một **cảnh báo để con người xem xét**, không phải kế
 ## 3. Cấu trúc thư mục
 
 ```
-GUI_Topic1/
+GUI_Project1/
 ├── app.py                  ứng dụng Streamlit
 ├── scoring.py              hàm dự đoán giá và chấm điểm bất thường
 ├── models/
