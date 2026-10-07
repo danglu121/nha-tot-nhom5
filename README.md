@@ -15,6 +15,7 @@ trên 7.935 tin đăng bán nhà tại Bình Thạnh, Gò Vấp và Phú Nhuận
 |---|---|
 | **Định giá nhà** | Nhập thông tin căn nhà, nhận giá gợi ý kèm khoảng tin cậy tính theo sai số thực đo của từng phân khúc giá |
 | **Kiểm tra giá bất thường** | Chấm điểm một tin đăng theo 4 tín hiệu độc lập rồi đưa ra kết luận kèm giải thích từng tín hiệu |
+| **Phân tích dữ liệu** | 19 biểu đồ từ notebook phân tích, chia ba nhóm: khảo sát dữ liệu, mô hình định giá, phát hiện bất thường, mỗi biểu đồ kèm diễn giải |
 | **Bảng điều khiển** | Phân bố điểm bất thường toàn bộ 7.935 tin, thống kê theo quận, hàng đợi kiểm duyệt, và kế hoạch giám sát sau triển khai |
 
 ## 2. Mô hình đứng sau
@@ -43,6 +44,9 @@ GUI_Topic1/
 │   └── metadata.json           tuỳ chọn dropdown, trọng số, ngưỡng
 ├── data/
 │   └── anomaly_scores.parquet  điểm đã chấm sẵn cho bảng điều khiển
+├── figures/
+│   ├── banner.png              ảnh đầu trang, tự dựng bằng matplotlib
+│   └── 01..19_*.png            19 biểu đồ phân tích từ notebook
 ├── requirements.txt
 ├── setup.sh
 ├── Procfile

@@ -16,8 +16,10 @@ from scoring import load_artifacts, predict_price, score_anomaly
 
 # Thư mục triển khai tự chứa: mô hình và dữ liệu chấm điểm nằm cạnh app.py.
 ROOT = Path(__file__).parent
+FIG = ROOT / "figures"
 
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]
+SEQ_BAND = "#9ec5f4"
 VERDICT_STYLE = {
     "Bình thường": ("#1baf7a", "✓"),
     "Giá quá rẻ": ("#2a78d6", "↓"),
@@ -46,7 +48,8 @@ st.sidebar.title("🏠 Nhà Tốt")
 st.sidebar.caption("Định giá và cảnh báo giá bất thường")
 page = st.sidebar.radio(
     "Chức năng",
-    ["Định giá nhà", "Kiểm tra giá bất thường", "Bảng điều khiển"],
+    ["Định giá nhà", "Kiểm tra giá bất thường", "Phân tích dữ liệu",
+     "Bảng điều khiển"],
     label_visibility="collapsed",
 )
 st.sidebar.divider()
@@ -56,6 +59,9 @@ st.sidebar.caption(
     f"MAPE {meta['metrics']['MAPE_pct']:.1f}% · "
     f"R² {meta['metrics']['R2_log']:.3f}"
 )
+
+
+st.image(str(FIG / "banner.png"), use_container_width=True)
 
 
 def _default_index(field: str, preferred: str) -> int:
@@ -165,6 +171,49 @@ if page == "Định giá nhà":
             + (", dùng khung cấp quận vì khu vực ít dữ liệu)" if band["fallback"] else ")")
         )
 
+        # Đặt đơn giá dự đoán vào đúng khung giá của phường. Một con số đứng
+        # một mình không cho biết nó cao hay thấp; chỉ khi nhìn cạnh khoảng phổ
+        # biến của khu vực thì người dùng mới đánh giá được.
+        don_gia = result["pred_unit_price"]
+        khung = pd.DataFrame([{
+            "lo": float(band["lo"]), "p10": float(band["p10"]),
+            "p50": float(band["p50"]), "p90": float(band["p90"]),
+            "hi": float(band["hi"]), "y": "Khung giá khu vực",
+        }])
+        diem = pd.DataFrame([{"x": don_gia, "y": "Khung giá khu vực",
+                              "nhan": f"{don_gia:.0f} tr/m²"}])
+
+        day = alt.Chart(khung).mark_bar(color="#e8eef6", height=34).encode(
+            x=alt.X("lo:Q", title="Đơn giá (triệu đồng mỗi m²)"),
+            x2="hi:Q", y=alt.Y("y:N", title=None, axis=None))
+        giua = alt.Chart(khung).mark_bar(color=SEQ_BAND, height=34).encode(
+            x="p10:Q", x2="p90:Q", y=alt.Y("y:N", title=None, axis=None))
+        trung_vi = alt.Chart(khung).mark_tick(
+            color="#184f95", thickness=3, size=40).encode(
+            x="p50:Q", y=alt.Y("y:N", title=None, axis=None))
+        cham = alt.Chart(diem).mark_point(
+            shape="diamond", size=330, filled=True, color=SERIES[1],
+            stroke="#ffffff", strokeWidth=1.6).encode(
+            x="x:Q", y=alt.Y("y:N", title=None, axis=None),
+            tooltip=[alt.Tooltip("nhan:N", title="Đơn giá dự đoán")])
+        # Nhãn đặt BÊN PHẢI hình thoi, không đặt phía trên. Đặt phía trên thì
+        # nó tràn ra ngoài vùng vẽ và bị cắt mất một nửa.
+        chu = alt.Chart(diem).mark_text(
+            align="left", dx=14, fontSize=12, fontWeight="bold",
+            color=SERIES[1]).encode(
+            x="x:Q", y=alt.Y("y:N", title=None, axis=None), text="nhan:N")
+
+        # padding top chừa chỗ cho nhãn số đặt phía trên hình thoi; thiếu nó
+        # thì nhãn bị cắt mất một nửa ở mép trên biểu đồ.
+        st.altair_chart((day + giua + trung_vi + cham + chu)
+                        .properties(height=110), use_container_width=True)
+        st.caption(
+            "Dải nhạt là khoảng Min tới Max của phường, dải đậm là khoảng phổ "
+            "biến P10 tới P90, vạch dọc là trung vị, và hình thoi cam là đơn giá "
+            "vừa dự đoán. Hình thoi nằm ngoài dải đậm nghĩa là căn nhà này khác "
+            "thường so với mặt bằng khu vực."
+        )
+
         if result["segment_mape"] > 20:
             st.warning(
                 f"Phân khúc giá này có sai số cao ({result['segment_mape']:.1f}%) "
@@ -246,7 +295,111 @@ elif page == "Kiểm tra giá bất thường":
                 "bất động sản thực sự hiếm. Mô hình không phân biệt được ba trường hợp đó."
             )
 
-# =================================================== 3. Bảng điều khiển
+# ================================================= 3. Phân tích dữ liệu
+elif page == "Phân tích dữ liệu":
+    st.title("Phân tích dữ liệu")
+    st.caption("Các biểu đồ dưới đây lấy trực tiếp từ notebook phân tích, "
+               "theo đúng thứ tự của Data Science Process.")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Tin đăng sau làm sạch", "7.935")
+    c1.caption("từ 8.273 tin thô")
+    c2.metric("Sai số MAPE", "14,2%")
+    c2.caption("XGBoost, tập kiểm tra")
+    c3.metric("Sai số tuyệt đối trung vị", "0,63 tỷ")
+    c3.caption("MedAE, sát thực tế hơn MAE")
+    c4.metric("Tin bị gắn cờ", "397")
+    c4.caption("5% có điểm bất thường cao nhất")
+
+    t1, t2, t3 = st.tabs(["Khảo sát dữ liệu", "Mô hình định giá",
+                          "Phát hiện bất thường"])
+
+    with t1:
+        st.image(str(FIG / "01_target_distribution.png"), use_container_width=True)
+        st.markdown(
+            """
+Giá bán lệch phải rất mạnh, vài tin đăng trăm tỷ kéo dài phần đuôi. Đây là lý do
+mô hình học trên **thang logarit** thay vì thang giá gốc, và cũng là lý do báo cáo
+kèm cả MedAE chứ không chỉ MAE.
+            """
+        )
+        st.image(str(FIG / "02_missingness.png"), use_container_width=True)
+        st.image(str(FIG / "03_unit_price_by_district.png"), use_container_width=True)
+        st.markdown(
+            """
+Ba quận có mặt bằng giá khác nhau rõ rệt, và chênh lệch trong cùng một quận còn
+lớn hơn chênh lệch giữa các quận. Vì vậy khung giá tham chiếu được dựng tới cấp
+**phường** chứ không dừng ở cấp quận.
+            """
+        )
+        st.image(str(FIG / "04_ward_price_band.png"), use_container_width=True)
+        st.image(str(FIG / "05_area_vs_price.png"), use_container_width=True)
+        st.image(str(FIG / "06_correlation.png"), use_container_width=True)
+        st.markdown(
+            """
+Ma trận tương quan cho thấy diện tích là biến mạnh nhất. Lưu ý rằng `don_gia`
+không được dùng làm đặc trưng: nó bằng `gia_ban` chia `dien_tich`, nên đưa vào sẽ
+rò rỉ chính biến mục tiêu.
+            """
+        )
+        st.image(str(FIG / "07_categorical_effect.png"), use_container_width=True)
+        st.image(str(FIG / "08_market_curve.png"), use_container_width=True)
+        st.markdown(
+            "Mặt bằng giá cả ba quận đều tăng trong bốn tháng gần nhất. Mô hình "
+            "không có yếu tố thời gian nên cần huấn luyện lại định kỳ."
+        )
+
+    with t2:
+        st.image(str(FIG / "10_model_comparison.png"), use_container_width=True)
+        st.markdown(
+            """
+XGBoost thắng rõ. Hồi quy tuyến tính có R² âm rất lớn trên thang giá gốc vì phép
+`expm1` khuếch đại sai số log ở nhóm bất động sản đắt tiền: một tin 106 tỷ bị dự
+đoán thành 2.192 tỷ. Bài học là **phải đọc chỉ số trên cả hai thang**.
+            """
+        )
+        st.image(str(FIG / "11_pred_vs_actual.png"), use_container_width=True)
+        st.image(str(FIG / "12_feature_importance.png"), use_container_width=True)
+        st.markdown(
+            "Diện tích và khu vực chi phối. Các từ khoá trích từ mô tả tin đăng "
+            "như *hẻm xe hơi* hay *hoàn công* cũng đóng góp đáng kể."
+        )
+        st.image(str(FIG / "13_error_by_segment.png"), use_container_width=True)
+        st.markdown(
+            """
+Sai số theo phân khúc giá có dạng chữ U: nhà rẻ và nhà đắt đều khó đoán hơn nhà
+tầm trung. Dạng chữ U này đã được kiểm chứng trên ba cách chia nhóm khác nhau nên
+không phải hiện tượng do cách chia tạo ra.
+            """
+        )
+
+    with t3:
+        st.image(str(FIG / "14_signal_distributions.png"), use_container_width=True)
+        st.markdown(
+            """
+Bốn tín hiệu độc lập: phần dư mô hình, vi phạm khung Min/Max, vị trí phân vị, và
+Isolation Forest. Mỗi tín hiệu bắt một kiểu bất thường khác nhau.
+            """
+        )
+        st.image(str(FIG / "15_signal_contribution.png"), use_container_width=True)
+        st.image(str(FIG / "16_score_distribution.png"), use_container_width=True)
+        st.image(str(FIG / "17_signal_agreement.png"), use_container_width=True)
+        st.markdown(
+            """
+Bài toán này **không có nhãn đúng**. Không có cách nào biết chắc một tin đăng có
+thật sự bất thường hay không, nên bốn tín hiệu được tổ hợp bằng trọng số đặt theo
+lập luận chứ không học từ dữ liệu. Mức đồng thuận giữa các tín hiệu là bằng chứng
+gián tiếp cho thấy chúng không mâu thuẫn nhau.
+            """
+        )
+        st.image(str(FIG / "18_validation.png"), use_container_width=True)
+        st.markdown(
+            "Phép kiểm chứng gián tiếp: nhóm tin bị gắn cờ có phân vị giá trung "
+            "bình 68,1 so với 47,1 của nhóm bình thường, đúng hướng kỳ vọng."
+        )
+        st.image(str(FIG / "19_verdict_scatter.png"), use_container_width=True)
+
+# =================================================== 4. Bảng điều khiển
 else:
     st.title("Bảng điều khiển & giám sát")
     scores = load_scores()
