@@ -49,7 +49,7 @@ meta = art["meta"]
 bands = art["bands"]
 
 # ════════════════════════════════════════════════════ Thanh bên
-st.sidebar.title("🏠 Nhà Tốt")
+st.sidebar.image(str(FIG / "nhatot_logo.png"), width=160)
 st.sidebar.caption("Tra giá nhà và kiểm tra tin đăng tại Bình Thạnh, "
                    "Gò Vấp và Phú Nhuận")
 st.sidebar.divider()
@@ -73,7 +73,11 @@ st.sidebar.caption(
     f"**{meta['metrics']['MedAE_ty']:.2f} tỷ**."
 )
 
-st.image(str(FIG / "hero_nha.png"), use_container_width=True)
+st.image(str(FIG / "hero_nhatot.png"), use_container_width=True)
+st.caption(
+    "Đồ án sinh viên, **không liên kết với Nhà Tốt** và không được Nhà Tốt "
+    "bảo trợ. Logo thuộc về Nhà Tốt, sử dụng trong phạm vi học tập."
+)
 
 
 # ════════════════════════════════════════════════════ Biểu mẫu
@@ -407,7 +411,8 @@ elif page == "Mặt bằng giá khu vực":
     st.subheader(f"Các phường ở {quan}, xếp theo mức giá")
     ve = b_quan.assign(ten=b_quan["area_key"].str.split(" / ").str[1])
     dai = alt.Chart(ve).mark_bar(color="#e8eef6", height=15).encode(
-        x=alt.X("p10:Q", title="Đơn giá (triệu đồng mỗi m²)"), x2="p90:Q",
+        x=alt.X("p10:Q", title="Đơn giá (triệu đồng mỗi m²)",
+                axis=alt.Axis(tickCount=8)), x2="p90:Q",
         y=alt.Y("ten:N", sort=None, title="Phường",
                 axis=alt.Axis(labelOverlap=False)))
     cham = alt.Chart(ve).mark_point(
@@ -431,7 +436,8 @@ elif page == "Mặt bằng giá khu vực":
     ).dropna(subset=["thay_doi"]).sort_values("thay_doi")
     st.altair_chart(
         alt.Chart(xu_huong).mark_bar(cornerRadius=3).encode(
-            x=alt.X("thay_doi:Q", title="Chênh lệch so với mức trung bình (%)"),
+            x=alt.X("thay_doi:Q", title="Chênh lệch so với mức trung bình (%)",
+                    axis=alt.Axis(tickCount=7)),
             y=alt.Y("ten:N", sort=None, title="Phường",
                     axis=alt.Axis(labelOverlap=False)),
             color=alt.condition(alt.datum.thay_doi > 0, alt.value(CAM),
@@ -446,17 +452,120 @@ elif page == "Mặt bằng giá khu vực":
         "ngắn hạn, không phải dự báo giá tương lai."
     )
 
-    with st.expander("Toàn cảnh ba quận"):
-        st.image(str(FIG / "03_unit_price_by_district.png"),
-                 use_container_width=True)
-        st.write(
-            "Ba quận có mặt bằng giá khác nhau rõ rệt. Điều đáng chú ý là "
-            "chênh lệch **trong cùng một quận** còn lớn hơn chênh lệch giữa "
-            "các quận, nên khi so sánh giá thì nên so ở cấp phường."
+    st.divider()
+    st.subheader("So sánh ba quận")
+    sc = load_scores()
+    sc = sc.assign(quan=sc["area_key"].str.split(" / ").str[0])
+
+    st.altair_chart(
+        alt.Chart(sc.sample(min(len(sc), 4000), random_state=42))
+        .mark_circle(size=22, opacity=0.28, color=XANH)
+        .encode(
+            x=alt.X("don_gia_trieu_m2:Q", title="Đơn giá (triệu đồng mỗi m²)",
+                    scale=alt.Scale(domain=[0, 400], clamp=True),
+                    axis=alt.Axis(tickCount=9)),
+            y=alt.Y("quan:N", title=None,
+                    axis=alt.Axis(labelFontSize=12, labelOverlap=False)),
+            yOffset=alt.YOffset("jitter:Q", scale=alt.Scale(domain=[0, 1])),
+            tooltip=[alt.Tooltip("area_key:N", title="Phường"),
+                     alt.Tooltip("don_gia_trieu_m2:Q", format=".0f",
+                                 title="Đơn giá"),
+                     alt.Tooltip("gia_ban_ty:Q", format=".2f",
+                                 title="Giá rao (tỷ)")],
         )
-        st.image(str(FIG / "08_market_curve.png"), use_container_width=True)
-        st.write("Mặt bằng giá cả ba quận đều nhích lên trong bốn tháng gần "
-                 "nhất của dữ liệu.")
+        .transform_calculate(jitter="random()")
+        .properties(height=240).interactive(),
+        use_container_width=True)
+    st.caption(
+        "Mỗi chấm là một tin đăng. Điều đáng chú ý là **chênh lệch bên trong "
+        "cùng một quận còn lớn hơn chênh lệch giữa ba quận**, nên khi so giá "
+        "thì nên so ở cấp phường chứ đừng so cấp quận. Cuộn để phóng to, kéo "
+        "để di chuyển."
+    )
+
+    st.divider()
+    st.subheader("Tra giá theo con đường")
+    st.write("Chọn phường rồi chọn đường để xem mặt bằng giá ngay tại đó.")
+
+    c1, c2 = st.columns(2)
+    phuong = c1.selectbox("Phường",
+                          sorted(sc[sc["quan"] == quan]["area_key"].unique()))
+    tin_phuong = sc[sc["area_key"] == phuong]
+    # Chỉ liệt kê đường có đủ tin đăng, dưới ba tin thì trung vị vô nghĩa
+    dem = tin_phuong["street"].value_counts()
+    duong_du = sorted(dem[dem >= 3].index.tolist())
+
+    if not duong_du:
+        c2.info("Phường này chưa có con đường nào đủ 3 tin đăng để thống kê.")
+    else:
+        duong = c2.selectbox(f"Đường, {len(duong_du)} đường có đủ dữ liệu",
+                             duong_du)
+        td = tin_phuong[tin_phuong["street"] == duong]
+        tv_phuong = tin_phuong["don_gia_trieu_m2"].median()
+        tv_duong = td["don_gia_trieu_m2"].median()
+        lech = (tv_duong - tv_phuong) / tv_phuong * 100
+
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Đơn giá giữa của đường", f"{tv_duong:.0f} triệu/m²")
+        d2.metric("So với cả phường", f"{lech:+.0f}%")
+        d3.metric("Số tin đăng", f"{len(td)}")
+        d4.metric("Giá rao giữa", f"{td['gia_ban_ty'].median():.2f} tỷ")
+
+        if len(td) < 8:
+            st.caption(
+                f"Chỉ {len(td)} tin đăng trên đường này, nên con số mang tính "
+                "tham khảo. Càng ít tin thì trung vị càng dễ bị một căn bất "
+                "thường kéo lệch."
+            )
+
+        st.altair_chart(
+            alt.Chart(td).mark_circle(size=90, opacity=0.75, color=CAM).encode(
+                x=alt.X("don_gia_trieu_m2:Q", title="Đơn giá (triệu đồng mỗi m²)",
+                        axis=alt.Axis(tickCount=7)),
+                y=alt.Y("gia_ban_ty:Q", title="Giá rao (tỷ đồng)",
+                        axis=alt.Axis(tickCount=6)),
+                tooltip=[alt.Tooltip("gia_ban_ty:Q", format=".2f",
+                                     title="Giá rao (tỷ)"),
+                         alt.Tooltip("don_gia_trieu_m2:Q", format=".0f",
+                                     title="Đơn giá"),
+                         alt.Tooltip("verdict_B:N", title="Đánh giá")],
+            ).properties(height=260).interactive(), use_container_width=True)
+        st.caption(f"Toàn bộ {len(td)} tin đăng ghi nhận trên {duong}. "
+                   "Rê chuột lên từng chấm để xem chi tiết.")
+
+    st.divider()
+    st.subheader("Có bao nhiêu nhà trong tầm tiền của bạn?")
+    tam = st.slider("Khoảng giá bạn cân nhắc (tỷ đồng)", 0.5, 40.0,
+                    (3.0, 8.0), 0.5)
+    trong_tam = sc[(sc["gia_ban_ty"] >= tam[0]) & (sc["gia_ban_ty"] <= tam[1])]
+
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.altair_chart(
+            alt.Chart(trong_tam).mark_bar(cornerRadius=2, color=XANH).encode(
+                x=alt.X("gia_ban_ty:Q", bin=alt.Bin(maxbins=40),
+                        title="Giá rao (tỷ đồng)",
+                        axis=alt.Axis(tickCount=8)),
+                y=alt.Y("count():Q", title="Số tin đăng"),
+                tooltip=[alt.Tooltip("count():Q", title="Số tin đăng")],
+            ).properties(height=260), use_container_width=True)
+    with c2:
+        st.metric("Tin đăng trong tầm giá", f"{len(trong_tam):,}")
+        st.metric("Chiếm tỷ lệ", f"{len(trong_tam) / len(sc) * 100:.0f}%")
+        st.caption("trên tổng số tin đăng của cả ba quận")
+
+    theo_quan = (trong_tam.groupby("quan").size()
+                 .rename("so_tin").reset_index()
+                 .sort_values("so_tin", ascending=False))
+    st.altair_chart(
+        alt.Chart(theo_quan).mark_bar(cornerRadius=3, color=XANH_DAM).encode(
+            x=alt.X("so_tin:Q", title="Số tin đăng trong tầm giá",
+                    axis=alt.Axis(tickCount=6)),
+            y=alt.Y("quan:N", sort="-x", title=None),
+            tooltip=[alt.Tooltip("quan:N", title="Quận"),
+                     alt.Tooltip("so_tin:Q", title="Số tin")],
+        ).properties(height=130), use_container_width=True)
+    st.caption("Quận nào có nhiều lựa chọn nhất trong khoảng tiền bạn chọn.")
 
 # ══════════════════════════════════════════════ 3. Về ứng dụng
 else:
@@ -533,6 +642,13 @@ Isolation Forest. Bài toán này **không có nhãn đúng**, nên trọng số
         with t1:
             st.image(str(FIG / "10_model_comparison.png"), use_container_width=True)
             st.image(str(FIG / "12_feature_importance.png"), use_container_width=True)
+            st.image(str(FIG / "08_market_curve.png"), use_container_width=True)
+            st.caption(
+                "Mặt bằng giá cả ba quận đều nhích lên trong bốn tháng cuối "
+                "của dữ liệu. Mô hình không có yếu tố thời gian nên cần huấn "
+                "luyện lại định kỳ. Biểu đồ này để dạng ảnh vì dữ liệu đã làm "
+                "sạch không còn giữ cột ngày đăng."
+            )
             st.image(str(FIG / "13_error_by_segment.png"), use_container_width=True)
             st.caption(
                 "Sai số theo phân khúc giá có dạng chữ U: nhà rẻ và nhà đắt đều "

@@ -112,10 +112,38 @@ Lưu ý rằng `price_model.joblib` và `isolation_forest.joblib` được tạo
 scikit-learn 1.9 và xgboost 3.4. Nếu Streamlit Cloud cài phiên bản khác hẳn thì có thể
 hiện cảnh báo lúc nạp mô hình.
 
-## Minh hoạ trong ứng dụng
+## Phần tương tác
 
-Ảnh đầu trang và các thẻ chọn vai (nhà phố, biển rao bán, kính lúp soi giá) đều do nhóm **tự vẽ bằng matplotlib**,
-mã nguồn nằm trong `draw_art.py`. Không dùng ảnh hay logo của bên thứ ba, nên
-không vướng vấn đề bản quyền khi công khai repository.
+Biểu đồ người dùng nhìn thấy đều **dựng trực tiếp từ dữ liệu lúc chạy**, không phải
+ảnh tĩnh, nên rê chuột xem được chi tiết và lọc được theo ý mình.
+
+| Chỗ nào | Tương tác được gì |
+|---|---|
+| Dải giá từng phường | Rê chuột lên hình thoi xem trung vị, khoảng phổ biến, số tin đăng |
+| Khu vực nào đang tăng giá | Đổi quận là bảng xếp hạng đổi theo |
+| So sánh ba quận | 4.000 tin đăng dạng chấm, cuộn để phóng to, kéo để di chuyển |
+| Tra giá theo con đường | Chọn phường rồi chọn đường trong 363 đường, so mặt bằng đường với cả phường |
+| Có bao nhiêu nhà trong tầm tiền | Thanh trượt khoảng giá, số liệu và biểu đồ tự cập nhật |
+| Dải giá trong kết quả định giá | Đặt mức giá vừa tính lên khung giá thật của phường |
+
+Ảnh tĩnh chỉ còn trong mục **Chi tiết kỹ thuật** ở trang Về ứng dụng, nơi chúng đóng
+vai trò bằng chứng về cách chọn mô hình chứ không phải nội dung cho người dùng cuối.
+
+## Hình ảnh trong ứng dụng
+
+| Tập tin | Nguồn |
+|---|---|
+| `figures/nhatot_logo.png` | Logo Nhà Tốt, đã cắt viền thừa |
+| `figures/hero_nhatot.png` | Logo ghép lên dải ảnh dãy phố do nhóm tự vẽ |
+| `figures/hero_nha.png` | Dãy phố, nhóm tự vẽ bằng matplotlib |
+| `figures/vai_nguoi_ban.png`, `vai_nguoi_mua.png` | Thẻ chọn vai, nhóm tự vẽ |
+| `figures/0*.png`, `1*.png` | Biểu đồ từ notebook, dùng trong mục chi tiết kỹ thuật |
+
+Hình vẽ sinh bằng `draw_art.py`, phần ghép logo nằm trong `prep_images.py`.
+
+**Về quyền sở hữu.** Tên và logo Nhà Tốt thuộc quyền sở hữu của Nhà Tốt. Đây là bài
+tập của sinh viên, **không liên kết với Nhà Tốt** và không được Nhà Tốt bảo trợ. Logo
+được dùng trong phạm vi học tập để minh hoạ cho bộ dữ liệu mà nhà trường cung cấp.
+Ứng dụng ghi rõ điều này ngay dưới ảnh đầu trang.
 
 ---
