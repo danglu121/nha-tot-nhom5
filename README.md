@@ -17,6 +17,7 @@ Người dùng chọn vai khi vào app, và các mục sẽ đổi theo vai đó
 |---|---|---|
 | **Tôi đang bán nhà** | Định giá nhà của tôi | Điền thông tin căn nhà để nhận giá tham khảo kèm khoảng hợp lý. Nhập thêm mức giá định rao để biết nó nằm ở đâu so với thị trường |
 | **Tôi đang tìm mua nhà** | Kiểm tra một tin đăng | Nhập thông tin tin đăng cùng giá người bán đưa ra, nhận kết luận giá có bất thường hay không kèm gợi ý nên kiểm tra thêm điều gì |
+| **Tôi là quản trị viên** | Duyệt tin đăng | Hàng đợi 397 tin bị gắn cờ, xem tiêu đề, nội dung và bốn dấu hiệu rồi quyết định cho đăng hay trả lại người bán |
 
 Hai mục còn lại dùng chung cho cả hai vai:
 
@@ -53,7 +54,8 @@ GUI_Project1/
 │   ├── area_bands.parquet      khung giá tham chiếu theo phường
 │   └── metadata.json           tuỳ chọn dropdown, trọng số, ngưỡng
 ├── data/
-│   └── anomaly_scores.parquet  điểm đã chấm sẵn cho bảng điều khiển
+│   ├── anomaly_scores.parquet  điểm đã chấm sẵn cho 7.935 tin
+│   └── hang_doi_duyet.parquet  397 tin bị gắn cờ, kèm tiêu đề và mô tả
 ├── figures/
 │   ├── banner.png              ảnh đầu trang, tự dựng bằng matplotlib
 │   └── 01..19_*.png            19 biểu đồ phân tích từ notebook
@@ -125,6 +127,7 @@ Biểu đồ người dùng nhìn thấy đều **dựng trực tiếp từ dữ
 | Tra giá theo con đường | Chọn phường rồi chọn đường trong 363 đường, so mặt bằng đường với cả phường |
 | Có bao nhiêu nhà trong tầm tiền | Thanh trượt khoảng giá, số liệu và biểu đồ tự cập nhật |
 | Dải giá trong kết quả định giá | Đặt mức giá vừa tính lên khung giá thật của phường |
+| Hàng đợi kiểm duyệt | Lọc theo kết luận và quận, bấm duyệt hoặc trả lại, tải kết quả về CSV |
 
 Ảnh tĩnh chỉ còn trong mục **Chi tiết kỹ thuật** ở trang Về ứng dụng, nơi chúng đóng
 vai trò bằng chứng về cách chọn mô hình chứ không phải nội dung cho người dùng cuối.

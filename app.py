@@ -44,6 +44,12 @@ def load_scores():
     return pd.read_parquet(ROOT / "data" / "anomaly_scores.parquet")
 
 
+@st.cache_data
+def load_hang_doi():
+    """397 tin bị gắn cờ, kèm tiêu đề và mô tả để quản trị viên xem xét."""
+    return pd.read_parquet(ROOT / "data" / "hang_doi_duyet.parquet")
+
+
 art = artifacts()
 meta = art["meta"]
 bands = art["bands"]
@@ -56,11 +62,16 @@ st.sidebar.divider()
 
 vai = st.sidebar.radio(
     "Bạn đang làm gì?",
-    ["Tôi đang bán nhà", "Tôi đang tìm mua nhà"],
+    ["Tôi đang bán nhà", "Tôi đang tìm mua nhà", "Tôi là quản trị viên"],
 )
 
-trang_chinh = ("Định giá nhà của tôi" if vai == "Tôi đang bán nhà"
-               else "Kiểm tra một tin đăng")
+if vai == "Tôi đang bán nhà":
+    trang_chinh = "Định giá nhà của tôi"
+elif vai == "Tôi đang tìm mua nhà":
+    trang_chinh = "Kiểm tra một tin đăng"
+else:
+    trang_chinh = "Duyệt tin đăng"
+
 page = st.sidebar.radio(
     "Chọn mục",
     [trang_chinh, "Mặt bằng giá khu vực", "Về ứng dụng"],
@@ -402,6 +413,158 @@ elif page == "Kiểm tra một tin đăng":
             "về việc người bán có gian dối hay không. Giá lệch mặt bằng có thể "
             "do nhiều nguyên nhân hợp lý."
         )
+
+# ═════════════════════════════════════════ 1c. Quản trị duyệt tin
+elif page == "Duyệt tin đăng":
+    st.title("Hàng đợi kiểm duyệt")
+    st.write(
+        "Những tin đăng bị hệ thống gắn cờ vì mức giá bất thường so với khu "
+        "vực. Mỗi tin cần một người xem lại rồi quyết định cho đăng hay trả "
+        "về cho người bán sửa."
+    )
+
+    hd = load_hang_doi()
+    # Quyết định giữ trong phiên làm việc. Tải lại trang là mất, đúng như
+    # thiết kế: đây là bản minh hoạ luồng kiểm duyệt, chưa nối cơ sở dữ liệu.
+    if "quyet_dinh" not in st.session_state:
+        st.session_state["quyet_dinh"] = {}
+    qd = st.session_state["quyet_dinh"]
+
+    da_duyet = sum(1 for v in qd.values() if v == "Cho đăng")
+    da_tu_choi = sum(1 for v in qd.values() if v == "Trả lại")
+    con_lai = len(hd) - len(qd)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Tin chờ xử lý", f"{con_lai:,}")
+    c2.metric("Đã cho đăng", f"{da_duyet:,}")
+    c3.metric("Đã trả lại", f"{da_tu_choi:,}")
+    c4.metric("Tỷ lệ trả lại",
+              f"{da_tu_choi / len(qd) * 100:.0f}%" if qd else "chưa có")
+    st.progress(len(qd) / len(hd) if len(hd) else 0.0)
+    st.caption(f"Đã xử lý {len(qd)} trên {len(hd)} tin. Quyết định chỉ lưu "
+               "trong phiên làm việc này, tải lại trang là bắt đầu lại.")
+
+    st.divider()
+    f1, f2, f3 = st.columns([2, 2, 1.4])
+    loc_kl = f1.multiselect("Lọc theo kết luận",
+                            ["Giá quá đắt", "Giá quá rẻ"],
+                            default=["Giá quá đắt", "Giá quá rẻ"])
+    loc_quan = f2.multiselect(
+        "Lọc theo quận",
+        sorted(hd["area_key"].str.split(" / ").str[0].unique()))
+    moi_trang = f3.selectbox("Số tin mỗi lần", [5, 10, 20], index=0)
+
+    cho = hd[~hd["ma_tin"].isin(qd) & hd["verdict_B"].isin(loc_kl)]
+    if loc_quan:
+        cho = cho[cho["area_key"].str.split(" / ").str[0].isin(loc_quan)]
+
+    if cho.empty:
+        st.success("Không còn tin nào khớp bộ lọc. Hàng đợi đã sạch.")
+    else:
+        st.subheader(f"{len(cho)} tin đang chờ, hiện {min(moi_trang, len(cho))} tin "
+                     "có điểm bất thường cao nhất")
+
+        TEN_TH = {"S_resid": "Lệch so với giá ứng dụng ước tính",
+                  "S_min_max": "Vượt ngoài khoảng giá từng ghi nhận",
+                  "S_percentile": "Vị trí so với các căn cùng phường",
+                  "S_ml": "Tổng thể căn nhà khác thường"}
+
+        for _, r in cho.head(moi_trang).iterrows():
+            mau, icon, _ = KET_LUAN[r["verdict_B"]]
+            with st.container(border=True):
+                a, b = st.columns([5, 2])
+                a.markdown(f"**{r['ma_tin']}**  ·  {str(r['tieu_de'])[:95]}")
+                b.markdown(
+                    f"<div style='text-align:right;color:{mau};font-weight:700'>"
+                    f"{icon} {r['verdict_B']}</div>", unsafe_allow_html=True)
+                st.caption(
+                    f"{r['area_key']}"
+                    + (f"  ·  {r['street']}" if isinstance(r["street"], str) else "")
+                    + f"  ·  {r['loai_hinh']}")
+
+                def _ty(v):
+                    return f"{v:.0f} tỷ" if v >= 100 else f"{v:.2f} tỷ"
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Giá rao", _ty(r["gia_ban_ty"]))
+                m2.metric("Ước tính", _ty(r["pred_ty"]))
+                lech = (r["gia_ban_ty"] - r["pred_ty"]) / r["pred_ty"] * 100
+                m3.metric("Chênh lệch", f"{lech:+.0f}%")
+                m4.metric("Điểm", f"{r['score_B']:.0f} / 100",
+                          f"{int(r['n_signals_B'])}/4 dấu hiệu",
+                          delta_color="off")
+
+                with st.expander("Xem nội dung tin đăng và các dấu hiệu"):
+                    st.write(str(r["mo_ta"])[:700] or "Tin đăng không có mô tả.")
+                    sig = pd.DataFrame({
+                        "Dấu hiệu": [TEN_TH[k] for k in TEN_TH],
+                        "Mức độ": [float(r[k]) for k in TEN_TH],
+                    })
+                    nen_tr = alt.Chart(sig.assign(full=1.0)).mark_bar(
+                        cornerRadius=4, color="#e8eef6", size=20).encode(
+                        x=alt.X("full:Q", scale=alt.Scale(domain=[0, 1]),
+                                axis=alt.Axis(format="%", tickCount=6),
+                                title="Mức độ bất thường"),
+                        y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]),
+                                title=None,
+                                axis=alt.Axis(labelLimit=320,
+                                              labelOverlap=False)))
+                    cot_tr = alt.Chart(sig).mark_bar(
+                        cornerRadius=4, color=XANH, size=20).encode(
+                        x=alt.X("Mức độ:Q", scale=alt.Scale(domain=[0, 1])),
+                        y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]),
+                                title=None),
+                        tooltip=["Dấu hiệu",
+                                 alt.Tooltip("Mức độ:Q", format=".0%")])
+                    st.altair_chart((nen_tr + cot_tr).properties(height=160),
+                                    use_container_width=True)
+                    st.caption(
+                        f"Khoảng giá phổ biến của phường: "
+                        f"{r['pct_p10']:.0f} tới {r['pct_p90']:.0f} phân vị. "
+                        f"Giá rao quy ra {r['don_gia_trieu_m2']:.0f} triệu "
+                        "mỗi m²."
+                    )
+
+                d1, d2, _ = st.columns([1.3, 1.3, 3])
+                if d1.button("Cho đăng", key=f"ok_{r['ma_tin']}",
+                             use_container_width=True):
+                    qd[r["ma_tin"]] = "Cho đăng"; st.rerun()
+                if d2.button("Trả lại", key=f"no_{r['ma_tin']}",
+                             type="primary", use_container_width=True):
+                    qd[r["ma_tin"]] = "Trả lại"; st.rerun()
+
+    if qd:
+        st.divider()
+        st.subheader("Những tin đã xử lý trong phiên này")
+        da = (hd[hd["ma_tin"].isin(qd)]
+              .assign(quyet_dinh=lambda x: x["ma_tin"].map(qd))
+              [["ma_tin", "quyet_dinh", "verdict_B", "area_key",
+                "gia_ban_ty", "pred_ty", "score_B", "tieu_de"]]
+              .rename(columns={
+                  "ma_tin": "Mã tin", "quyet_dinh": "Quyết định",
+                  "verdict_B": "Kết luận máy", "area_key": "Khu vực",
+                  "gia_ban_ty": "Giá rao (tỷ)",
+                  "pred_ty": "Ước tính (tỷ)", "score_B": "Điểm",
+                  "tieu_de": "Tiêu đề"})
+              .round(2))
+        st.dataframe(da, use_container_width=True, hide_index=True,
+                     height=min(400, 60 + 35 * len(da)))
+        g1, g2 = st.columns([1.4, 4])
+        g1.download_button(
+            "Tải CSV",
+            da.to_csv(index=False).encode("utf-8-sig"),
+            "ket_qua_kiem_duyet.csv", "text/csv",
+            use_container_width=True)
+        if g2.button("Xoá hết quyết định và làm lại"):
+            st.session_state["quyet_dinh"] = {}; st.rerun()
+
+    st.divider()
+    st.caption(
+        "Hệ thống chỉ gắn cờ để con người xem lại, không tự quyết định. "
+        "Giá lệch mặt bằng có thể do nhiều nguyên nhân hợp lý, chẳng hạn căn "
+        "nhà có điểm đặc biệt chưa ghi trong tin, hoặc người bán gõ nhầm số. "
+        "Quyết định cuối cùng luôn thuộc về quản trị viên."
+    )
 
 # ══════════════════════════════════════ 2. Mặt bằng giá khu vực
 elif page == "Mặt bằng giá khu vực":
