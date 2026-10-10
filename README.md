@@ -16,7 +16,7 @@ Người dùng chọn vai khi vào app, và các mục sẽ đổi theo vai đó
 | Vai | Mục chính | Nội dung |
 |---|---|---|
 | **Tôi đang bán nhà** | Định giá nhà của tôi | Điền thông tin căn nhà để nhận giá tham khảo kèm khoảng hợp lý. Nhập thêm mức giá định rao để biết nó nằm ở đâu so với thị trường |
-| **Tôi đang tìm mua nhà** | Kiểm tra một tin đăng | Nhập thông tin tin đăng cùng giá người bán đưa ra, nhận kết luận giá có bất thường hay không kèm gợi ý nên kiểm tra thêm điều gì |
+| **Tôi đang tìm mua nhà** | Tìm nhà phù hợp | Mô tả căn nhà muốn mua, không phải nhập giá. Ứng dụng ước tính mức giá hợp lý cho căn đó rồi gợi ý những tin đăng thật gần với mô tả nhất, mỗi tin kèm nhãn giá. Bấm vào một tin để xem phân tích đầy đủ, và lọc kỹ hơn ngay dưới danh sách |
 | **Tôi là quản trị viên** | Duyệt tin đăng | Hàng đợi 397 tin bị gắn cờ, xem tiêu đề, nội dung và bốn dấu hiệu rồi quyết định cho đăng hay trả lại người bán |
 
 Hai mục còn lại dùng chung cho cả hai vai:
@@ -48,6 +48,7 @@ quả như một **cảnh báo để con người xem xét**, không phải kế
 GUI_Project1/
 ├── app.py                  ứng dụng Streamlit
 ├── scoring.py              hàm dự đoán giá và chấm điểm bất thường
+├── build_tin_dang.py       dựng lại data/tin_dang.parquet từ dữ liệu gốc
 ├── models/
 │   ├── price_model.joblib      XGBoost định giá
 │   ├── isolation_forest.joblib mô hình phát hiện bất thường
@@ -55,7 +56,8 @@ GUI_Project1/
 │   └── metadata.json           tuỳ chọn dropdown, trọng số, ngưỡng
 ├── data/
 │   ├── anomaly_scores.parquet  điểm đã chấm sẵn cho 7.935 tin
-│   └── hang_doi_duyet.parquet  397 tin bị gắn cờ, kèm tiêu đề và mô tả
+│   ├── hang_doi_duyet.parquet  397 tin bị gắn cờ, kèm tiêu đề và mô tả
+│   └── tin_dang.parquet        kho tin cho trang tìm nhà của người mua
 ├── figures/
 │   ├── banner.png              ảnh đầu trang, tự dựng bằng matplotlib
 │   └── 01..19_*.png            19 biểu đồ phân tích từ notebook
@@ -71,6 +73,11 @@ GUI_Project1/
 Đề bài ghi rõ dữ liệu không được chia sẻ, nên repo này **không chứa dữ liệu gốc**. Tập
 tin `anomaly_scores.parquet` chỉ giữ 11 cột mà bảng điều khiển thực sự dùng, thay vì
 22 cột của bảng gốc, và không kèm tiêu đề hay mô tả tin đăng.
+
+Trang tìm nhà của người mua cần hiển thị tin đăng thật nên `tin_dang.parquet` có giữ
+tiêu đề, nhưng chỉ 24 trong 49 cột: những trường mà người mua đọc khi lướt tin, cộng
+bốn dấu hiệu đã chấm sẵn. Mô tả chi tiết của tin vẫn không được đóng gói, trừ 397 tin
+trong hàng đợi duyệt.
 
 ## 5. Chạy tại máy
 

@@ -1,7 +1,8 @@
-"""Nhà Tốt: công cụ tra giá nhà và kiểm tra tin đăng.
+"""Nhà Tốt: công cụ tra giá nhà và tìm tin đăng.
 
 Ứng dụng dành cho người dùng cuối. Người bán tra xem nhà mình đáng giá bao
-nhiêu, người mua kiểm tra xem một tin đăng có bị thổi giá hay không.
+nhiêu, người mua mô tả căn nhà mình muốn rồi nhận về những tin đăng thật gần
+với mô tả nhất, mỗi tin kèm nhãn cho biết giá có bất thường hay không.
 
 Chạy:  streamlit run app.py
 """
@@ -30,7 +31,7 @@ KET_LUAN = {
     "Giá quá đắt": (CAM, "⚠️", "Giá cao bất thường so với khu vực"),
 }
 
-st.set_page_config(page_title="Nhà Tốt · Tra giá nhà và kiểm tra tin đăng",
+st.set_page_config(page_title="Nhà Tốt · Tra giá nhà và tìm nhà",
                    page_icon="🏠", layout="wide")
 
 
@@ -50,13 +51,19 @@ def load_hang_doi():
     return pd.read_parquet(ROOT / "data" / "hang_doi_duyet.parquet")
 
 
+@st.cache_data
+def load_tin_dang():
+    """Toàn bộ kho tin đăng cho trang tìm nhà, kèm nhãn giá đã chấm sẵn."""
+    return pd.read_parquet(ROOT / "data" / "tin_dang.parquet")
+
+
 art = artifacts()
 meta = art["meta"]
 bands = art["bands"]
 
 # ════════════════════════════════════════════════════ Thanh bên
 st.sidebar.image(str(FIG / "nhatot_logo.png"), width=160)
-st.sidebar.caption("Tra giá nhà và kiểm tra tin đăng tại Bình Thạnh, "
+st.sidebar.caption("Tra giá nhà và tìm tin đăng tại Bình Thạnh, "
                    "Gò Vấp và Phú Nhuận")
 st.sidebar.divider()
 
@@ -68,7 +75,7 @@ vai = st.sidebar.radio(
 if vai == "Tôi đang bán nhà":
     trang_chinh = "Định giá nhà của tôi"
 elif vai == "Tôi đang tìm mua nhà":
-    trang_chinh = "Kiểm tra một tin đăng"
+    trang_chinh = "Tìm nhà phù hợp"
 else:
     trang_chinh = "Duyệt tin đăng"
 
@@ -246,6 +253,271 @@ def thanh_gia(band: pd.Series, don_gia: float, nhan: str):
     )
 
 
+# ══════════════════════════════════════ Kho tin đăng cho người mua
+GIA_SAN, GIA_TRAN = 0.5, 40.0
+
+PHAM_VI = ["Phường tôi chọn", "Cả quận", "Cả ba quận"]
+
+MAC_DINH_LOC = {
+    "loc_pham_vi": "Cả quận",
+    "loc_tam_gia": (GIA_SAN, GIA_TRAN),
+    "loc_pn": 0,
+    "loc_dt": 0,
+    "loc_an_toan": False,
+    "loc_sap_xep": "Phù hợp nhất",
+    "loc_so_tin": 8,
+}
+
+
+def tam_gia_mac_dinh(gia_uoc: float) -> tuple[float, float]:
+    """Tầm giá mở sẵn quanh mức ứng dụng ước tính cho căn người mua mô tả."""
+    return (float(max(GIA_SAN, round(gia_uoc * 0.60 * 2) / 2)),
+            float(min(GIA_TRAN, round(gia_uoc * 1.40 * 2) / 2)))
+
+THU_TU_SAP_XEP = {
+    "Phù hợp nhất": ("phu_hop", False),
+    "Giá thấp trước": ("gia_ban_ty", True),
+    "Giá cao trước": ("gia_ban_ty", False),
+    "Đơn giá rẻ nhất": ("don_gia_trieu_m2", True),
+}
+
+NHAN_NGAN = {
+    "Bình thường": ("Giá bình thường", LUC),
+    "Giá quá rẻ": ("Giá thấp bất thường", XANH),
+    "Giá quá đắt": ("Giá cao bất thường", CAM),
+}
+
+TRONG_SO_PHU_HOP = {"vi_tri": 0.30, "dien_tich": 0.22, "gia": 0.18,
+                    "phong_ngu": 0.15, "loai_nha": 0.10, "giay_to": 0.05}
+
+TEN_TIN_HIEU = {
+    "s_resid": "Chênh lệch so với mức giá ứng dụng ước tính",
+    "s_min_max": "Vượt ra ngoài khoảng giá từng ghi nhận ở phường",
+    "s_pct": "Vị trí so với các căn khác cùng phường",
+    "s_ml": "Tổng thể căn nhà khác thường so với phần còn lại",
+}
+
+
+def cham_phu_hop(kho: pd.DataFrame, yc: dict, gia_uoc: float) -> np.ndarray:
+    """Chấm độ phù hợp 0 tới 1 của từng tin với căn nhà người mua mô tả.
+
+    Người mua không phải nhập giá. Mốc giá dùng để so sánh chính là mức mà mô
+    hình ước tính cho căn họ vừa mô tả, nên danh sách vẫn bám sát tầm tiền hợp
+    lý của căn đó mà không bắt người mua tự định giá trước.
+    """
+    def gan_nhau(cot: pd.Series, muc: float, gap: float) -> np.ndarray:
+        """Bằng 1 khi trùng mức, giảm dần về 0 khi lệch tới `gap` lần."""
+        x = np.maximum(cot.to_numpy(dtype=float), 1e-6)
+        return np.clip(1 - np.abs(np.log(x / max(muc, 1e-6))) / np.log(gap), 0, 1)
+
+    quan = yc["area_key"].split(" / ")[0]
+    cung_phuong = kho["area_key"].astype(str).to_numpy() == yc["area_key"]
+    cung_duong = kho["street"].astype(str).to_numpy() == (yc["street"] or "\x00")
+    vi_tri = np.where(
+        cung_phuong & cung_duong, 1.00,
+        np.where(cung_phuong, 0.90,
+                 np.where(kho["district"].astype(str).to_numpy() == quan,
+                          0.50, 0.15)))
+
+    dien_tich = gan_nhau(kho["dien_tich_m2"], float(yc["dien_tich_m2"]), 2.0)
+    gia = gan_nhau(kho["gia_ban_ty"], float(gia_uoc), 1.7)
+
+    pn = kho["so_phong_ngu"].to_numpy(dtype=float)
+    pn_yc = yc.get("so_phong_ngu")
+    # Thiếu số phòng ngủ thì cho điểm giữa, vì không có cơ sở để thưởng hay
+    # phạt tin đó so với những tin khai đầy đủ.
+    phong_ngu = (np.where(np.isnan(pn), 0.5,
+                          1 - np.clip(np.abs(pn - pn_yc) / 3, 0, 1))
+                 if pn_yc else np.full(len(kho), 0.5))
+
+    loai_nha = np.where(
+        kho["loai_hinh"].astype(str).to_numpy() == yc["loai_hinh"], 1.0, 0.25)
+    gt = kho["giay_to_phap_ly"].astype(str).to_numpy()
+    giay_to = np.where(gt == str(yc["giay_to_phap_ly"]), 1.0,
+                       np.where(gt == "nan", 0.5, 0.40))
+
+    w = TRONG_SO_PHU_HOP
+    return (w["vi_tri"] * vi_tri + w["dien_tich"] * dien_tich
+            + w["gia"] * gia + w["phong_ngu"] * phong_ngu
+            + w["loai_nha"] * loai_nha + w["giay_to"] * giay_to)
+
+
+def bieu_do_goi_y(ds: pd.DataFrame, kq: dict, yc: dict):
+    """Đặt các tin gợi ý lên mặt phẳng diện tích và giá.
+
+    Một danh sách dọc không cho thấy các lựa chọn đắt rẻ ra sao so với nhau.
+    Biểu đồ này cho thấy ngay, và dấu thoi đen là căn người mua mô tả.
+    """
+    ds = ds.assign(
+        nhan=[NHAN_NGAN[v][0] for v in ds["verdict"].astype(str)],
+        phu_hop_pct=(ds["phu_hop"] * 100).round(0),
+    )
+    thu_tu = [NHAN_NGAN[k][0] for k in KET_LUAN]
+    diem = alt.Chart(ds).mark_circle(size=150, opacity=0.8, stroke="#ffffff",
+                                     strokeWidth=1).encode(
+        x=alt.X("dien_tich_m2:Q", title="Diện tích (m²)",
+                scale=alt.Scale(zero=False, nice=True)),
+        y=alt.Y("gia_ban_ty:Q", title="Giá rao (tỷ đồng)",
+                scale=alt.Scale(zero=False, nice=True)),
+        color=alt.Color("nhan:N", title="Nhãn giá",
+                        scale=alt.Scale(domain=thu_tu,
+                                        range=[LUC, XANH, CAM]),
+                        legend=alt.Legend(orient="top", direction="horizontal")),
+        tooltip=[alt.Tooltip("ma_tin:N", title="Mã tin"),
+                 alt.Tooltip("tieu_de:N", title="Tiêu đề"),
+                 alt.Tooltip("area_key:N", title="Phường"),
+                 alt.Tooltip("gia_ban_ty:Q", title="Giá (tỷ)", format=".2f"),
+                 alt.Tooltip("dien_tich_m2:Q", title="Diện tích (m²)", format=".0f"),
+                 alt.Tooltip("don_gia_trieu_m2:Q", title="Mỗi m² (tr)", format=".0f"),
+                 alt.Tooltip("phu_hop_pct:Q", title="Phù hợp (%)", format=".0f"),
+                 alt.Tooltip("nhan:N", title="Nhãn giá")])
+
+    moc = pd.DataFrame([{"x": float(yc["dien_tich_m2"]),
+                         "y": float(kq["pred_ty"]),
+                         "nhan": "Căn bạn mô tả"}])
+    thoi = alt.Chart(moc).mark_point(shape="diamond", size=300, filled=True,
+                                     color=MUC).encode(
+        x="x:Q", y="y:Q", tooltip=[alt.Tooltip("nhan:N", title="")])
+    chu = alt.Chart(moc).mark_text(align="left", dx=14, fontSize=12,
+                                   fontWeight="bold", color=MUC).encode(
+        x="x:Q", y="y:Q", text="nhan:N")
+
+    st.altair_chart(
+        (diem + thoi + chu).add_params(zoom_giu_shift()).properties(height=300),
+        use_container_width=True)
+    st.caption(
+        "Mỗi chấm là một tin gợi ý, màu theo nhãn giá. Dấu thoi đen là căn "
+        "bạn mô tả, đặt ở mức giá ứng dụng ước tính. Di chuột lên một chấm để "
+        "xem chi tiết, giữ Shift và lăn chuột để phóng to."
+    )
+
+
+def _so(x, dang="{:.0f}") -> str:
+    """Số có thể thiếu trong tin đăng, thiếu thì ghi dấu gạch."""
+    return "–" if pd.isna(x) else dang.format(x)
+
+
+def the_tin(r: pd.Series, kq: dict):
+    """Một tin đăng trong danh sách gợi ý, bấm vào xem phân tích giá."""
+    nhan, mau = NHAN_NGAN[str(r["verdict"])]
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([3.2, 1.05, 1.35])
+        with c1:
+            st.markdown(
+                f"<div style='font-size:15px;font-weight:600;line-height:1.35'>"
+                f"{str(r['tieu_de'])[:92]}</div>"
+                f"<div style='font-size:12.5px;color:{XAM};margin-top:4px'>"
+                f"{r['ma_tin']} &nbsp;·&nbsp; {r['area_key']} &nbsp;·&nbsp; "
+                f"{'Chưa rõ đường' if pd.isna(r['street']) else r['street']} "
+                f"&nbsp;·&nbsp; {r['loai_hinh']}</div>"
+                f"<div style='font-size:12.5px;color:{XAM};margin-top:2px'>"
+                f"{_so(r['dien_tich_m2'])} m² &nbsp;·&nbsp; "
+                f"{_so(r['so_phong_ngu'])} phòng ngủ &nbsp;·&nbsp; "
+                f"{_so(r['so_phong_ve_sinh'])} vệ sinh &nbsp;·&nbsp; "
+                f"{_so(r['tong_so_tang'])} tầng &nbsp;·&nbsp; ngang "
+                f"{_so(r['chieu_ngang_m'], '{:.1f}')} m</div>",
+                unsafe_allow_html=True)
+        with c2:
+            st.markdown(
+                f"<div style='font-size:19px;font-weight:700;color:{XANH_DAM}'>"
+                f"{r['gia_ban_ty']:.2f} tỷ</div>"
+                f"<div style='font-size:12.5px;color:{XAM}'>"
+                f"{r['don_gia_trieu_m2']:.0f} tr mỗi m²</div>",
+                unsafe_allow_html=True)
+        with c3:
+            st.markdown(
+                f"<div style='display:inline-block;padding:3px 10px;"
+                f"border-radius:11px;background:{mau}1f;color:{mau};"
+                f"font-size:12px;font-weight:600'>{nhan}</div>"
+                f"<div style='font-size:12.5px;color:{XAM};margin-top:4px'>"
+                f"Phù hợp {r['phu_hop'] * 100:.0f}%</div>",
+                unsafe_allow_html=True)
+            mo = st.session_state.get("mua_chi_tiet") == r["ma_tin"]
+            if st.button("Thu gọn" if mo else "Phân tích giá",
+                         key=f"ct_{r['ma_tin']}", use_container_width=True):
+                st.session_state["mua_chi_tiet"] = None if mo else r["ma_tin"]
+                mo = not mo
+        if mo:
+            phan_tich_gia(r, kq)
+
+
+def phan_tich_gia(r: pd.Series, kq: dict):
+    """Giải thích vì sao một tin đăng được gắn nhãn giá như vậy."""
+    ket = str(r["verdict"])
+    mau, icon, tom_tat = KET_LUAN[ket]
+    st.divider()
+    st.markdown(
+        f"<div style='padding:14px 18px;border-radius:10px;background:{mau}18;"
+        f"border-left:5px solid {mau}'>"
+        f"<div style='font-size:19px;font-weight:700;color:{mau}'>"
+        f"{icon} {tom_tat}</div></div>",
+        unsafe_allow_html=True)
+
+    st.write("")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Người bán rao", f"{r['gia_ban_ty']:.2f} tỷ",
+              f"{r['don_gia_trieu_m2']:.0f} tr mỗi m²")
+    c2.metric("Mức hợp lý theo ứng dụng", f"{r['pred_ty']:.2f} tỷ")
+    lech = (r["gia_ban_ty"] - r["pred_ty"]) / r["pred_ty"] * 100
+    c3.metric("Chênh lệch", f"{lech:+.0f}%")
+
+    band_r = bands[bands["area_key"] == r["area_key"]]
+    if len(band_r):
+        thanh_gia(band_r.iloc[0], float(r["don_gia_trieu_m2"]),
+                  f"{r['don_gia_trieu_m2']:.0f} tr/m²")
+
+    if ket == "Giá quá đắt":
+        st.warning(
+            "**Bạn nên làm gì tiếp theo.** Hỏi người bán vì sao giá cao hơn "
+            "mặt bằng khu vực. Có thể căn nhà có điểm đặc biệt chưa thể hiện "
+            "trong tin đăng, chẳng hạn vừa sửa lớn, vị trí góc hai mặt tiền, "
+            "hoặc đã hoàn công. Nếu không có lý do rõ ràng, hãy so sánh thêm "
+            "vài tin khác cùng phường trước khi đặt cọc."
+        )
+    elif ket == "Giá quá rẻ":
+        st.info(
+            "**Bạn nên làm gì tiếp theo.** Giá thấp bất thường không hẳn là cơ "
+            "hội tốt. Hãy kiểm tra kỹ giấy tờ pháp lý, tình trạng tranh chấp, "
+            "quy hoạch, và diện tích thực tế so với diện tích ghi trong tin. "
+            "Cũng có khả năng người bán gõ nhầm số."
+        )
+    else:
+        st.success(
+            "**Bạn nên làm gì tiếp theo.** Mức giá này phù hợp với mặt bằng "
+            "khu vực. Việc còn lại là kiểm tra giấy tờ pháp lý và xem nhà trực "
+            "tiếp, hai thứ mà ứng dụng không thể thay bạn làm."
+        )
+
+    with st.expander("Vì sao ứng dụng kết luận như vậy?"):
+        sig = pd.DataFrame({
+            "Dấu hiệu": list(TEN_TIN_HIEU.values()),
+            "Mức độ": [float(r[k]) for k in TEN_TIN_HIEU],
+        })
+        nen_track = alt.Chart(sig.assign(full=1.0)).mark_bar(
+            cornerRadius=4, color="#e8eef6", size=24).encode(
+            x=alt.X("full:Q", scale=alt.Scale(domain=[0, 1]),
+                    axis=alt.Axis(format="%"), title="Mức độ bất thường"),
+            y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]), title=None,
+                    axis=alt.Axis(labelLimit=340, labelOverlap=False)))
+        cot = alt.Chart(sig).mark_bar(
+            cornerRadius=4, color=XANH, size=24).encode(
+            x=alt.X("Mức độ:Q", scale=alt.Scale(domain=[0, 1])),
+            y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]), title=None),
+            tooltip=["Dấu hiệu", alt.Tooltip("Mức độ:Q", format=".0%")])
+        st.altair_chart((nen_track + cot).properties(height=190),
+                        use_container_width=True)
+        st.write(
+            f"Ứng dụng xét bốn dấu hiệu độc lập. Tin này có "
+            f"**{int(r['n_signals'])} trên 4 dấu hiệu** cho thấy bất thường. "
+            "Thanh càng dài nghĩa là dấu hiệu đó càng rõ."
+        )
+        st.caption(
+            f"Ứng dụng ước tính {kq['pred_ty']:.2f} tỷ cho căn bạn mô tả, và "
+            f"{r['pred_ty']:.2f} tỷ cho căn trong tin này, tính theo đúng "
+            "thông tin người bán đã khai."
+        )
+
+
 # ══════════════════════════════════════════ 1a. Người bán định giá
 if page == "Định giá nhà của tôi":
     c1, c2 = st.columns([3, 1])
@@ -330,106 +602,150 @@ if page == "Định giá nhà của tôi":
                 f"chiếu thêm với các tin đăng đang có trong khu vực."
             )
 
-# ══════════════════════════════════════════ 1b. Người mua kiểm tra
-elif page == "Kiểm tra một tin đăng":
+# ══════════════════════════════════════════ 1b. Người mua tìm nhà
+elif page == "Tìm nhà phù hợp":
+    kho = load_tin_dang()
     c1, c2 = st.columns([3, 1])
     with c1:
-        st.title("Tin đăng này có đáng tin không?")
+        st.title("Tìm căn nhà hợp với bạn")
         st.write(
-            "Thấy một căn ưng ý nhưng không chắc giá có hợp lý? Nhập thông tin "
-            "trong tin đăng cùng mức giá người bán đưa ra, ứng dụng sẽ so sánh "
-            "với mặt bằng thực tế của khu vực và cho biết mức giá đó có bất "
-            "thường hay không."
+            "Mô tả căn nhà bạn muốn mua. Ứng dụng tự ước tính mức giá hợp lý "
+            f"cho căn đó, rồi lọc trong **{len(kho):,} tin đăng thật** ra "
+            "những căn gần với mô tả nhất. Bạn không cần biết trước giá, và "
+            "mỗi tin đều được chấm sẵn xem giá có bất thường hay không."
         )
     with c2:
         st.image(str(FIG / "vai_nguoi_mua.png"), use_container_width=True)
 
-    listing = bieu_mau("mua")
-    rao = st.number_input("**Giá người bán đang rao (tỷ đồng)**",
-                          0.1, 1000.0, 6.0, 0.1)
+    yc = bieu_mau("mua")
 
-    if st.button("Kiểm tra giá", type="primary", use_container_width=True):
-        r = score_anomaly(listing, rao)
-        mau, icon, tom_tat = KET_LUAN[r["verdict"]]
+    if st.button("Tìm nhà phù hợp", type="primary", use_container_width=True):
+        kq = predict_price(yc)
+        st.session_state["mua_tim"] = (yc, kq)
+        st.session_state.pop("mua_chi_tiet", None)
+        # Xoá bộ lọc của lần tìm trước. Phải xoá chứ không gán đè, vì
+        # Streamlit không cho sửa giá trị của một ô điều khiển đã dựng; xoá
+        # khoá thì ô đó quay về mặc định tính theo căn nhà vừa mô tả.
+        for _k in MAC_DINH_LOC:
+            st.session_state.pop(_k, None)
+
+    if "mua_tim" in st.session_state:
+        yc_tim, kq = st.session_state["mua_tim"]
+        akey = yc_tim["area_key"]
+        quan = akey.split(" / ")[0]
+        band = bands[bands["area_key"] == akey].iloc[0]
+
+        # Đọc giá trị bộ lọc trước khi vẽ danh sách. Các ô điều khiển nằm
+        # bên dưới kết quả, nhưng Streamlit chạy lại cả trang sau mỗi thao
+        # tác nên giá trị trong session_state đã là giá trị mới nhất.
+        md = dict(MAC_DINH_LOC, loc_tam_gia=tam_gia_mac_dinh(kq["pred_ty"]))
+        loc = {k: st.session_state.get(k, v) for k, v in md.items()}
+        pham_vi = loc["loc_pham_vi"]
+        gia_min, gia_max = loc["loc_tam_gia"]
+        pn_min, dt_min = loc["loc_pn"], loc["loc_dt"]
+        chi_an_toan, sap_xep = loc["loc_an_toan"], loc["loc_sap_xep"]
+        so_tin = loc["loc_so_tin"]
+
+        if pham_vi == "Phường tôi chọn":
+            pool = kho[kho["area_key"] == akey]
+        elif pham_vi == "Cả quận":
+            pool = kho[kho["district"] == quan]
+        else:
+            pool = kho
+
+        giu = pool["gia_ban_ty"] >= gia_min
+        if gia_max < GIA_TRAN:
+            giu &= pool["gia_ban_ty"] <= gia_max
+        if pn_min:
+            giu &= pool["so_phong_ngu"].fillna(0) >= pn_min
+        if dt_min:
+            giu &= pool["dien_tich_m2"] >= dt_min
+        if chi_an_toan:
+            giu &= pool["verdict"] == "Bình thường"
+
+        hop = pool[giu].copy()
+        if len(hop):
+            hop["phu_hop"] = cham_phu_hop(hop, yc_tim, kq["pred_ty"])
+            hop = hop.sort_values(THU_TU_SAP_XEP[sap_xep][0],
+                                  ascending=THU_TU_SAP_XEP[sap_xep][1])
+        ds = hop.head(so_tin)
 
         st.divider()
-        st.markdown(
-            f"<div style='padding:20px;border-radius:12px;background:{mau}18;"
-            f"border-left:6px solid {mau}'>"
-            f"<div style='font-size:25px;font-weight:700;color:{mau}'>"
-            f"{icon} {tom_tat}</div></div>",
-            unsafe_allow_html=True,
+        st.subheader("Căn như bạn mô tả đáng khoảng bao nhiêu")
+        c1, c2, c3 = st.columns([1, 1, 1.4])
+        c1.metric("Mức giá hợp lý", f"{kq['pred_ty']:.2f} tỷ")
+        c2.metric("Mỗi m²", f"{kq['pred_unit_price']:.0f} tr")
+        c3.metric("Khoảng hợp lý",
+                  f"{kq['low_ty']:.1f} tới {kq['high_ty']:.1f} tỷ")
+        st.write(
+            f"Đây là mức ứng dụng ước tính cho căn bạn vừa mô tả ở **{akey}**, "
+            "dùng làm mốc để chọn tin gợi ý bên dưới. Bạn không phải nhập giá, "
+            "và cũng có thể tự chỉnh lại tầm giá ở phần tìm kỹ hơn."
         )
+        thanh_gia(band, kq["pred_unit_price"],
+                  f"{kq['pred_unit_price']:.0f} tr/m²")
 
-        st.write("")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Người bán rao", f"{rao:.2f} tỷ",
-                  f"{r['unit_price']:.0f} tr mỗi m²")
-        c2.metric("Mức hợp lý theo ứng dụng", f"{r['pred_ty']:.2f} tỷ")
-        lech = (rao - r["pred_ty"]) / r["pred_ty"] * 100
-        c3.metric("Chênh lệch", f"{lech:+.0f}%")
-
-        band = bands[bands["area_key"] == listing["area_key"]].iloc[0]
-        thanh_gia(band, r["unit_price"], f"{r['unit_price']:.0f} tr/m²")
-
-        if r["verdict"] == "Giá quá đắt":
+        st.divider()
+        cach_xep = ("gần nhất với mô tả của bạn" if sap_xep == "Phù hợp nhất"
+                    else f"xếp theo {sap_xep.lower()}")
+        st.subheader(f"{len(ds)} tin đăng {cach_xep}")
+        if not len(ds):
             st.warning(
-                "**Bạn nên làm gì tiếp theo.** Hỏi người bán vì sao giá cao hơn "
-                "mặt bằng khu vực. Có thể căn nhà có điểm đặc biệt chưa thể "
-                "hiện trong tin đăng, chẳng hạn vừa sửa lớn, vị trí góc hai mặt "
-                "tiền, hoặc đã hoàn công. Nếu không có lý do rõ ràng, hãy so "
-                "sánh thêm vài tin đăng khác cùng phường trước khi đặt cọc."
-            )
-        elif r["verdict"] == "Giá quá rẻ":
-            st.info(
-                "**Bạn nên làm gì tiếp theo.** Giá thấp bất thường không hẳn là "
-                "cơ hội tốt. Hãy kiểm tra kỹ giấy tờ pháp lý, tình trạng tranh "
-                "chấp, quy hoạch, và diện tích thực tế so với diện tích ghi "
-                "trong tin. Cũng có khả năng người bán gõ nhầm số."
+                "Không có tin nào khớp với bộ lọc hiện tại. Hãy nới tầm giá "
+                "hoặc mở rộng phạm vi ở phần **Tìm kỹ hơn** bên dưới."
             )
         else:
-            st.success(
-                "**Bạn nên làm gì tiếp theo.** Mức giá này phù hợp với mặt bằng "
-                "khu vực. Việc còn lại là kiểm tra giấy tờ pháp lý và xem nhà "
-                "trực tiếp, hai thứ mà ứng dụng không thể thay bạn làm."
+            st.caption(
+                f"Chọn ra từ {len(hop):,} tin thoả bộ lọc trong "
+                f"{len(pool):,} tin của phạm vi đang xem. Độ phù hợp tính theo "
+                "vị trí, diện tích, tầm giá, số phòng ngủ, loại nhà và giấy tờ."
             )
+            bieu_do_goi_y(ds, kq, yc_tim)
 
-        with st.expander("Vì sao ứng dụng kết luận như vậy?"):
-            # Khoá do scoring.py trả về là tên kỹ thuật. Đổi sang câu chữ
-            # người thường hiểu được, và giữ nguyên thứ tự gốc.
-            ten_tin_hieu = {
-                "Residual-Z": "Chênh lệch so với mức giá ứng dụng ước tính",
-                "Min/Max": "Vượt ra ngoài khoảng giá từng ghi nhận ở phường",
-                "P10–P90": "Vị trí so với các căn khác cùng phường",
-                "Isolation Forest": "Tổng thể căn nhà khác thường so với phần còn lại",
-            }
-            sig = pd.DataFrame({
-                "Dấu hiệu": [ten_tin_hieu.get(k, k) for k in r["signals"]],
-                "Mức độ": list(r["signals"].values()),
-            })
-            nen_track = alt.Chart(sig.assign(full=1.0)).mark_bar(
-                cornerRadius=4, color="#e8eef6", size=24).encode(
-                x=alt.X("full:Q", scale=alt.Scale(domain=[0, 1]),
-                        axis=alt.Axis(format="%"), title="Mức độ bất thường"),
-                y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]), title=None,
-                        axis=alt.Axis(labelLimit=340, labelOverlap=False)))
-            cot = alt.Chart(sig).mark_bar(
-                cornerRadius=4, color=XANH, size=24).encode(
-                x=alt.X("Mức độ:Q", scale=alt.Scale(domain=[0, 1])),
-                y=alt.Y("Dấu hiệu:N", sort=list(sig["Dấu hiệu"]), title=None),
-                tooltip=["Dấu hiệu", alt.Tooltip("Mức độ:Q", format=".0%")])
-            st.altair_chart((nen_track + cot).properties(height=190),
-                            use_container_width=True)
-            st.write(
-                f"Ứng dụng xét bốn dấu hiệu độc lập. Lần này có "
-                f"**{r['n_signals']} trên 4 dấu hiệu** cho thấy bất thường. "
-                "Thanh càng dài nghĩa là dấu hiệu đó càng rõ."
+            for _, r in ds.iterrows():
+                the_tin(r, kq)
+
+            if len(hop) > len(ds):
+                st.caption(
+                    f"Còn {len(hop) - len(ds):,} tin khác thoả bộ lọc. Tăng số "
+                    "tin hiển thị ở phần Tìm kỹ hơn để xem thêm."
+                )
+
+        # ─────────────────────────── Tìm kỹ hơn, đặt sau danh sách gợi ý
+        st.divider()
+        with st.expander("Tìm kỹ hơn: lọc và sắp xếp lại danh sách", expanded=False):
+            st.caption(
+                "Mọi thay đổi ở đây áp dụng ngay cho danh sách phía trên."
             )
+            c1, c2 = st.columns(2)
+            with c1:
+                st.radio("Phạm vi tìm", PHAM_VI,
+                         index=PHAM_VI.index(md["loc_pham_vi"]),
+                         key="loc_pham_vi")
+                st.slider("Tầm giá (tỷ đồng)", GIA_SAN, GIA_TRAN,
+                          value=md["loc_tam_gia"], step=0.5, key="loc_tam_gia")
+                st.caption(
+                    f"Kéo mốc trên tới {GIA_TRAN:.0f} tỷ nghĩa là không giới "
+                    "hạn giá trần."
+                )
+            with c2:
+                st.slider("Số phòng ngủ tối thiểu", 0, 6,
+                          value=md["loc_pn"], key="loc_pn",
+                          help="Để 0 nếu bạn không đặt yêu cầu.")
+                st.number_input("Diện tích tối thiểu (m²)", 0, 500,
+                                value=md["loc_dt"], step=5, key="loc_dt")
+                st.checkbox("Chỉ hiện tin có giá bình thường",
+                            value=md["loc_an_toan"], key="loc_an_toan")
+            c3, c4 = st.columns(2)
+            c3.radio("Sắp xếp theo", list(THU_TU_SAP_XEP), key="loc_sap_xep",
+                     index=list(THU_TU_SAP_XEP).index(md["loc_sap_xep"]))
+            c4.slider("Số tin hiển thị", 5, 30, value=md["loc_so_tin"],
+                      key="loc_so_tin")
 
         st.caption(
-            "Kết quả này là gợi ý để bạn xem xét kỹ hơn, không phải kết luận "
-            "về việc người bán có gian dối hay không. Giá lệch mặt bằng có thể "
-            "do nhiều nguyên nhân hợp lý."
+            "Nhãn giá là gợi ý để bạn xem xét kỹ hơn, không phải kết luận về "
+            "việc người bán có gian dối hay không. Giá lệch mặt bằng có thể do "
+            "nhiều nguyên nhân hợp lý."
         )
 
 # ═════════════════════════════════════════ 1c. Quản trị duyệt tin
@@ -781,9 +1097,9 @@ Bạn cũng có thể nhập mức giá định rao để xem nó nằm ở đâ
             """
 **Nếu bạn đang tìm mua**
 
-Nhập thông tin một tin đăng cùng giá người bán đưa ra. Ứng dụng so sánh với
-mặt bằng khu vực và cho biết mức giá đó có bất thường hay không, kèm gợi ý
-nên kiểm tra thêm điều gì.
+Mô tả căn nhà bạn muốn. Ứng dụng ước tính mức giá hợp lý cho căn đó rồi gợi ý
+những tin đăng thật gần với mô tả nhất, mỗi tin kèm nhãn cho biết giá có bất
+thường hay không. Bấm vào một tin để xem phân tích đầy đủ.
             """
         )
 
