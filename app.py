@@ -81,6 +81,18 @@ st.caption(
 
 
 # ════════════════════════════════════════════════════ Biểu mẫu
+def zoom_giu_shift():
+    """Phóng to bằng con lăn, nhưng phải giữ Shift.
+
+    Để .interactive() mặc định thì biểu đồ nuốt mọi thao tác con lăn: người
+    dùng tưởng đang cuộn trang mà hoá ra đang phóng to biểu đồ, và trục bị
+    kéo ra những khoảng vô nghĩa. Buộc giữ Shift thì cuộn trang vẫn bình
+    thường, ai muốn phóng to thì vẫn phóng được.
+    """
+    return alt.selection_interval(bind="scales",
+                                  zoom="wheel![event.shiftKey]")
+
+
 def _mac_dinh(field: str, uu_tien: str) -> int:
     """Chọn sẵn giá trị phổ biến nhất ngoài đời, không phải giá trị đầu bảng.
 
@@ -231,11 +243,11 @@ if page == "Định giá nhà của tôi":
         band = bands[bands["area_key"] == akey].iloc[0]
 
         st.divider()
-        c1, c2, c3 = st.columns([2, 1, 1])
+        c1, c2, c3 = st.columns([1, 1, 1.4])
         c1.metric("Giá tham khảo", f"{kq['pred_ty']:.2f} tỷ")
-        c2.metric("Tính ra mỗi m²", f"{kq['pred_unit_price']:.0f} triệu")
+        c2.metric("Mỗi m²", f"{kq['pred_unit_price']:.0f} tr")
         c3.metric("Khoảng hợp lý",
-                  f"{kq['low_ty']:.2f} tới {kq['high_ty']:.2f} tỷ")
+                  f"{kq['low_ty']:.1f} tới {kq['high_ty']:.1f} tỷ")
 
         st.write(
             f"Với những căn tương tự ở **{akey}**, mức giá thường thấy là "
@@ -323,8 +335,8 @@ elif page == "Kiểm tra một tin đăng":
         st.write("")
         c1, c2, c3 = st.columns(3)
         c1.metric("Người bán rao", f"{rao:.2f} tỷ",
-                  f"{r['unit_price']:.0f} triệu mỗi m²")
-        c2.metric("Mức giá hợp lý theo ứng dụng", f"{r['pred_ty']:.2f} tỷ")
+                  f"{r['unit_price']:.0f} tr mỗi m²")
+        c2.metric("Mức hợp lý theo ứng dụng", f"{r['pred_ty']:.2f} tỷ")
         lech = (rao - r["pred_ty"]) / r["pred_ty"] * 100
         c3.metric("Chênh lệch", f"{lech:+.0f}%")
 
@@ -474,12 +486,13 @@ elif page == "Mặt bằng giá khu vực":
                                  title="Giá rao (tỷ)")],
         )
         .transform_calculate(jitter="random()")
-        .properties(height=240).interactive(),
+        .properties(height=240).add_params(zoom_giu_shift()),
         use_container_width=True)
     st.caption(
         "Mỗi chấm là một tin đăng. Điều đáng chú ý là **chênh lệch bên trong "
         "cùng một quận còn lớn hơn chênh lệch giữa ba quận**, nên khi so giá "
-        "thì nên so ở cấp phường chứ đừng so cấp quận. Cuộn để phóng to, kéo "
+        "thì nên so ở cấp phường chứ đừng so cấp quận. Giữ Shift rồi cuộn để "
+        "phóng to, kéo "
         "để di chuyển."
     )
 
@@ -529,7 +542,7 @@ elif page == "Mặt bằng giá khu vực":
                          alt.Tooltip("don_gia_trieu_m2:Q", format=".0f",
                                      title="Đơn giá"),
                          alt.Tooltip("verdict_B:N", title="Đánh giá")],
-            ).properties(height=260).interactive(), use_container_width=True)
+            ).properties(height=260).add_params(zoom_giu_shift()), use_container_width=True)
         st.caption(f"Toàn bộ {len(td)} tin đăng ghi nhận trên {duong}. "
                    "Rê chuột lên từng chấm để xem chi tiết.")
 
