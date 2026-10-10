@@ -145,5 +145,3 @@ Hình vẽ sinh bằng `draw_art.py`, phần ghép logo nằm trong `prep_images
 tập của sinh viên, **không liên kết với Nhà Tốt** và không được Nhà Tốt bảo trợ. Logo
 được dùng trong phạm vi học tập để minh hoạ cho bộ dữ liệu mà nhà trường cung cấp.
 Ứng dụng ghi rõ điều này ngay dưới ảnh đầu trang.
-
----
