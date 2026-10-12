@@ -518,6 +518,76 @@ def phan_tich_gia(r: pd.Series, kq: dict):
         )
 
 
+# ══════════════════════════════ Xử lý hàng loạt cho quản trị viên
+def thanh_hang_loat(cho: pd.DataFrame, chon: list[str], qd: dict):
+    """Cho đăng hoặc trả lại nhiều tin cùng lúc, có bước hỏi lại.
+
+    Duyệt từng tin một là đúng cho tin khó, nhưng hàng đợi 397 tin thì cần
+    lối đi nhanh. Mọi thao tác hàng loạt đều phải xác nhận và nói rõ số tin,
+    vì nhấn nhầm ở đây ảnh hưởng tới hàng trăm người bán.
+    """
+    xn = st.session_state.get("xn_hang_loat")
+
+    with st.container(border=True):
+        st.markdown("**Xử lý hàng loạt**")
+
+        if xn:
+            n = len(xn["ma_tin"])
+            st.warning(
+                f"Bạn sắp **{xn['quyet_dinh'].lower()}** {n} tin "
+                f"({xn['nguon']}). Quyết định sẽ ghi cho cả {n} tin trong "
+                "phiên làm việc này."
+            )
+            x1, x2, _ = st.columns([1.2, 1.2, 3.6])
+            if x1.button("Đồng ý", type="primary",
+                         use_container_width=True):
+                for m in xn["ma_tin"]:
+                    qd[m] = xn["quyet_dinh"]
+                    st.session_state.pop(f"sel_{m}", None)
+                st.session_state["xn_hang_loat"] = None
+                st.rerun()
+            if x2.button("Huỷ", use_container_width=True):
+                st.session_state["xn_hang_loat"] = None
+                st.rerun()
+            return
+
+        def _hoi(quyet_dinh: str, ma_tin: list[str], nguon: str):
+            st.session_state["xn_hang_loat"] = {
+                "quyet_dinh": quyet_dinh, "ma_tin": list(ma_tin),
+                "nguon": nguon}
+            st.rerun()
+
+        tat_ca = list(cho["ma_tin"])
+        nguon_loc = "toàn bộ tin khớp bộ lọc"
+        nguon_chon = "các tin bạn đã tích chọn"
+
+        # Nhãn nút để ngắn, số lượng nói ở dòng tiêu đề phía trên và nói lại
+        # một lần nữa ở bước xác nhận, nên không sợ bấm nhầm vì thiếu chữ.
+        g_loc, g_chon = st.columns(2)
+        with g_loc:
+            st.caption(f"**Toàn bộ {len(tat_ca)} tin khớp bộ lọc**, kể cả "
+                       "tin chưa hiện trên màn hình")
+            b1, b2 = st.columns(2)
+            if b1.button("Cho đăng", key="hl_ok_tat_ca",
+                         use_container_width=True):
+                _hoi("Cho đăng", tat_ca, nguon_loc)
+            if b2.button("Trả lại", key="hl_no_tat_ca",
+                         use_container_width=True):
+                _hoi("Trả lại", tat_ca, nguon_loc)
+        with g_chon:
+            st.caption(f"**{len(chon)} tin bạn đã tích chọn** trong danh "
+                       "sách bên dưới" if chon
+                       else "**Chưa tích chọn tin nào** trong danh sách "
+                            "bên dưới")
+            b3, b4 = st.columns(2)
+            if b3.button("Cho đăng", key="hl_ok_chon", disabled=not chon,
+                         use_container_width=True):
+                _hoi("Cho đăng", chon, nguon_chon)
+            if b4.button("Trả lại", key="hl_no_chon", disabled=not chon,
+                         use_container_width=True):
+                _hoi("Trả lại", chon, nguon_chon)
+
+
 # ══════════════════════════════════════════ 1a. Người bán định giá
 if page == "Định giá nhà của tôi":
     c1, c2 = st.columns([3, 1])
@@ -795,7 +865,15 @@ elif page == "Duyệt tin đăng":
     if cho.empty:
         st.success("Không còn tin nào khớp bộ lọc. Hàng đợi đã sạch.")
     else:
-        st.subheader(f"{len(cho)} tin đang chờ, hiện {min(moi_trang, len(cho))} tin "
+        hien = cho.head(moi_trang)
+        # Ô tích chỉ tồn tại cho những thẻ đang hiện, nên lựa chọn cũng chỉ
+        # tính trong phạm vi đó. Người duyệt không vô tình xử lý tin mình
+        # chưa nhìn thấy.
+        chon = [m for m in hien["ma_tin"]
+                if st.session_state.get(f"sel_{m}")]
+        thanh_hang_loat(cho, chon, qd)
+
+        st.subheader(f"{len(cho)} tin đang chờ, hiện {len(hien)} tin "
                      "có điểm bất thường cao nhất")
 
         TEN_TH = {"S_resid": "Lệch so với giá ứng dụng ước tính",
@@ -803,7 +881,7 @@ elif page == "Duyệt tin đăng":
                   "S_percentile": "Vị trí so với các căn cùng phường",
                   "S_ml": "Tổng thể căn nhà khác thường"}
 
-        for _, r in cho.head(moi_trang).iterrows():
+        for _, r in hien.iterrows():
             mau, icon, _ = KET_LUAN[r["verdict_B"]]
             with st.container(border=True):
                 a, b = st.columns([5, 2])
@@ -859,13 +937,18 @@ elif page == "Duyệt tin đăng":
                         "mỗi m²."
                     )
 
-                d1, d2, _ = st.columns([1.3, 1.3, 3])
+                d0, d1, d2, _ = st.columns([1.1, 1.3, 1.3, 2.3])
+                d0.checkbox("Chọn", key=f"sel_{r['ma_tin']}")
                 if d1.button("Cho đăng", key=f"ok_{r['ma_tin']}",
                              use_container_width=True):
-                    qd[r["ma_tin"]] = "Cho đăng"; st.rerun()
+                    qd[r["ma_tin"]] = "Cho đăng"
+                    st.session_state.pop(f"sel_{r['ma_tin']}", None)
+                    st.rerun()
                 if d2.button("Trả lại", key=f"no_{r['ma_tin']}",
                              type="primary", use_container_width=True):
-                    qd[r["ma_tin"]] = "Trả lại"; st.rerun()
+                    qd[r["ma_tin"]] = "Trả lại"
+                    st.session_state.pop(f"sel_{r['ma_tin']}", None)
+                    st.rerun()
 
     if qd:
         st.divider()
@@ -890,7 +973,11 @@ elif page == "Duyệt tin đăng":
             "ket_qua_kiem_duyet.csv", "text/csv",
             use_container_width=True)
         if g2.button("Xoá hết quyết định và làm lại"):
-            st.session_state["quyet_dinh"] = {}; st.rerun()
+            st.session_state["quyet_dinh"] = {}
+            st.session_state["xn_hang_loat"] = None
+            for _k in [k for k in st.session_state if k.startswith("sel_")]:
+                st.session_state.pop(_k, None)
+            st.rerun()
 
     st.divider()
     st.caption(

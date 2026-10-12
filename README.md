@@ -17,7 +17,7 @@ Người dùng chọn vai khi vào app, và các mục sẽ đổi theo vai đó
 |---|---|---|
 | **Tôi đang bán nhà** | Định giá nhà của tôi | Điền thông tin căn nhà để nhận giá tham khảo kèm khoảng hợp lý. Nhập thêm mức giá định rao để biết nó nằm ở đâu so với thị trường |
 | **Tôi đang tìm mua nhà** | Tìm nhà phù hợp | Mô tả căn nhà muốn mua, không phải nhập giá. Ứng dụng ước tính mức giá hợp lý cho căn đó rồi gợi ý những tin đăng thật gần với mô tả nhất, mỗi tin kèm nhãn giá. Bấm vào một tin để xem phân tích đầy đủ, và lọc kỹ hơn ngay dưới danh sách |
-| **Tôi là quản trị viên** | Duyệt tin đăng | Hàng đợi 397 tin bị gắn cờ, xem tiêu đề, nội dung và bốn dấu hiệu rồi quyết định cho đăng hay trả lại người bán |
+| **Tôi là quản trị viên** | Duyệt tin đăng | Hàng đợi 397 tin bị gắn cờ, xem tiêu đề, nội dung và bốn dấu hiệu rồi quyết định cho đăng hay trả lại người bán. Duyệt từng tin, hoặc xử lý hàng loạt theo bộ lọc và theo nhóm tự tích chọn, luôn có bước xác nhận ghi rõ số tin |
 
 Hai mục còn lại dùng chung cho cả hai vai:
 
