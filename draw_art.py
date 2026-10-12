@@ -253,3 +253,178 @@ print("Project 2:")
 hero_vanphong()
 the(P2 / "vai_ung_vien.png", ve_ung_vien)
 the(P2 / "vai_nha_tuyen_dung.png", ve_nha_tuyen_dung)
+
+# ═══════════════════════════════════ Biểu tượng cho từng mục
+# Mỗi mục trong ứng dụng có một màu riêng, biểu tượng vẽ theo đúng màu đó để
+# người dùng nhận ra mình đang ở đâu mà không phải đọc tiêu đề.
+def icon(path, ve, mau_nen):
+    fig, ax = khung(3.0, 3.0, mau_nen)
+    ve(ax, ax.get_xlim()[1], 100)
+    luu(fig, path, mau_nen)
+
+
+def bang_gia(ax, x, y, w, h, mau, chu):
+    """Thẻ giá bo tròn có lỗ treo, dùng cho biểu tượng định giá."""
+    ax.add_patch(FancyBboxPatch((x, y), w, h,
+                                boxstyle="round,pad=0,rounding_size=3",
+                                facecolor=mau, edgecolor="none", zorder=8))
+    ax.add_patch(Circle((x + w * 0.16, y + h * 0.5), min(w, h) * 0.11,
+                        facecolor=TRANG, edgecolor="none", zorder=9))
+    ax.text(x + w * 0.60, y + h * 0.5, chu, fontsize=15, fontweight="bold",
+            color=TRANG, ha="center", va="center", zorder=9)
+
+
+def kinh_lup(ax, cx, cy, r, mau, chu=None):
+    ax.add_patch(Circle((cx, cy), r, facecolor=TRANG, alpha=0.94,
+                        edgecolor=mau, linewidth=3.6, zorder=8))
+    ax.plot([cx + r * 0.72, cx + r * 1.62], [cy - r * 0.72, cy - r * 1.62],
+            color=mau, linewidth=5.6, solid_capstyle="round", zorder=8)
+    if chu:
+        ax.text(cx, cy, chu, fontsize=16, fontweight="bold", color=mau,
+                ha="center", va="center", zorder=9)
+
+
+def cot(ax, x, nen_y, w, h, mau):
+    ax.add_patch(FancyBboxPatch((x, nen_y), w, h,
+                                boxstyle="round,pad=0,rounding_size=2",
+                                facecolor=mau, edgecolor="none", zorder=5))
+
+
+def ve_icon_dinh_gia(ax, W, H):
+    """Nhà kèm thẻ giá: người bán muốn biết nhà mình đáng bao nhiêu."""
+    ax.add_patch(Rectangle((0, 0), W, 18, facecolor="#cfe0d2",
+                           edgecolor="none", zorder=1))
+    nha_pho(ax, W * 0.12, 18, W * 0.50, 42, XANH[2], XANH[5], 2)
+    bang_gia(ax, W * 0.46, 62, W * 0.46, 20, LUC, "₫")
+    cay(ax, W * 0.86, 18, 26)
+
+
+def ve_icon_tim_nha(ax, W, H):
+    """Ba căn nhà và một kính lúp: người mua đang dò tìm."""
+    ax.add_patch(Rectangle((0, 0), W, 18, facecolor="#cfe0d2",
+                           edgecolor="none", zorder=1))
+    for x, rong, cao, than, mai in [
+        (W * 0.04, W * 0.26, 30, XANH[1], XANH[4]),
+        (W * 0.36, W * 0.28, 40, XANH[3], XANH[6]),
+        (W * 0.70, W * 0.24, 26, XANH[2], XANH[5]),
+    ]:
+        nha_pho(ax, x, 18, rong, cao, than, mai, 2, cua_chinh=False)
+    kinh_lup(ax, W * 0.70, 70, 16, "#2a78d6")
+
+
+def ve_icon_duyet_tin(ax, W, H):
+    """Bảng kẹp hồ sơ với một dấu tích và một dấu gạch: duyệt hay trả lại."""
+    bx, by, bw, bh = W * 0.18, 14, W * 0.64, 72
+    ax.add_patch(FancyBboxPatch((bx, by), bw, bh,
+                                boxstyle="round,pad=0,rounding_size=4",
+                                facecolor=TRANG, edgecolor="#c9d4e4",
+                                linewidth=2.2, zorder=4))
+    ax.add_patch(FancyBboxPatch((bx + bw * 0.30, by + bh - 6), bw * 0.40, 11,
+                                boxstyle="round,pad=0,rounding_size=3",
+                                facecolor="#7c4dcc", edgecolor="none", zorder=6))
+    for i, (mau, tick) in enumerate([(LUC, True), (CAM, False), (LUC, True)]):
+        y = by + bh * (0.60 - 0.22 * i)
+        ax.add_patch(Rectangle((bx + bw * 0.30, y), bw * 0.48, 4.6,
+                               facecolor="#dfe6f1", edgecolor="none", zorder=5))
+        cx = bx + bw * 0.17
+        ax.add_patch(Circle((cx, y + 2.3), 5.4, facecolor=mau,
+                            edgecolor="none", zorder=6))
+        if tick:
+            ax.plot([cx - 2.4, cx - 0.6, cx + 2.6],
+                    [y + 2.3, y + 0.3, y + 4.6], color=TRANG, linewidth=2.2,
+                    solid_capstyle="round", zorder=7)
+        else:
+            ax.plot([cx - 2.4, cx + 2.4], [y + 2.3, y + 2.3], color=TRANG,
+                    linewidth=2.2, solid_capstyle="round", zorder=7)
+
+
+def ve_icon_mat_bang_gia(ax, W, H):
+    """Cột giá cao dần, trên mỗi cột là một mái nhà nhỏ."""
+    ax.add_patch(Rectangle((0, 12), W, 2.4, facecolor="#c9d4e4",
+                           edgecolor="none", zorder=2))
+    cao = [26, 40, 33, 54, 46]
+    mau = [XANH[1], XANH[2], XANH[3], "#d99100", XANH[5]]
+    bw = W * 0.14
+    for i, (h, m) in enumerate(zip(cao, mau)):
+        x = W * 0.07 + i * (bw + W * 0.035)
+        cot(ax, x, 14, bw, h, m)
+        ax.add_patch(Polygon([[x - bw * 0.12, 14 + h],
+                              [x + bw * 0.5, 14 + h + bw * 0.42],
+                              [x + bw * 1.12, 14 + h]],
+                             closed=True, facecolor=m, edgecolor="none",
+                             zorder=6))
+
+
+def ve_icon_ve_ung_dung(ax, W, H, mau="#46617d"):
+    """Quyển sách mở: phần giới thiệu và giải thích."""
+    ax.add_patch(Polygon([[W * 0.08, 26], [W * 0.48, 34], [W * 0.48, 76],
+                          [W * 0.08, 66]], closed=True, facecolor=mau,
+                         edgecolor="none", zorder=4))
+    ax.add_patch(Polygon([[W * 0.92, 26], [W * 0.52, 34], [W * 0.52, 76],
+                          [W * 0.92, 66]], closed=True, facecolor=mau,
+                         alpha=0.74, edgecolor="none", zorder=4))
+    for i in range(4):
+        y = 44 + i * 8
+        ax.plot([W * 0.14, W * 0.42], [y, y + 5], color=TRANG, alpha=0.75,
+                linewidth=2.0, solid_capstyle="round", zorder=5)
+        ax.plot([W * 0.58, W * 0.86], [y + 5, y], color=TRANG, alpha=0.75,
+                linewidth=2.0, solid_capstyle="round", zorder=5)
+
+
+def ve_icon_tim_cty(ax, W, H):
+    """Hai toà nhà và kính lúp: ứng viên đang tìm nơi làm việc."""
+    ax.add_patch(Rectangle((0, 0), W, 14, facecolor="#c3cedd",
+                           edgecolor="none", zorder=1))
+    toa_nha(ax, W * 0.08, 14, W * 0.30, 52, XANH[4], 3, 7)
+    toa_nha(ax, W * 0.44, 14, W * 0.24, 36, XANH[2], 2, 5)
+    kinh_lup(ax, W * 0.74, 62, 16, CAM)
+
+
+def ve_icon_doc_danh_gia(ax, W, H):
+    """Bong bóng lời nói kèm dải sao: một đánh giá của nhân viên."""
+    bx, by, bw, bh = W * 0.10, 34, W * 0.80, 44
+    ax.add_patch(FancyBboxPatch((bx, by), bw, bh,
+                                boxstyle="round,pad=0,rounding_size=6",
+                                facecolor=XANH[1], edgecolor="none", zorder=4))
+    ax.add_patch(Polygon([[bx + bw * 0.22, by], [bx + bw * 0.34, by],
+                          [bx + bw * 0.22, by - 12]], closed=True,
+                         facecolor=XANH[1], edgecolor="none", zorder=4))
+    for i in range(4):
+        goc = np.linspace(0, 2 * np.pi, 11)[:-1] + np.pi / 2
+        bk = np.where(np.arange(10) % 2 == 0, 5.6, 2.4)
+        cx = bx + bw * (0.17 + 0.22 * i)
+        mau = VANG if i < 3 else "#dbe4f0"
+        ax.add_patch(Polygon(np.c_[cx + bk * np.cos(goc),
+                                   by + bh * 0.58 + bk * np.sin(goc)],
+                             closed=True, facecolor=mau, edgecolor="none",
+                             zorder=6))
+    ax.add_patch(Rectangle((bx + bw * 0.14, by + bh * 0.22), bw * 0.72, 4.2,
+                           facecolor=TRANG, alpha=0.8, edgecolor="none",
+                           zorder=6))
+
+
+def ve_icon_thi_truong(ax, W, H):
+    """Cột thống kê dâng dần trước dãy cao ốc mờ."""
+    for x, rong, cao in [(W * 0.06, W * 0.18, 56), (W * 0.40, W * 0.16, 70),
+                         (W * 0.70, W * 0.20, 48)]:
+        ax.add_patch(Rectangle((x, 14), rong, cao, facecolor=XANH[0],
+                               alpha=0.75, edgecolor="none", zorder=2))
+    ax.add_patch(Rectangle((0, 12), W, 2.4, facecolor="#c9d4e4",
+                           edgecolor="none", zorder=3))
+    for i, (h, m) in enumerate(zip([22, 38, 30, 52],
+                                   [XANH[2], XANH[4], CAM, XANH[6]])):
+        cot(ax, W * 0.10 + i * W * 0.21, 14, W * 0.14, h, m)
+
+
+# ═══════════════════════════════════════════════ Chạy phần biểu tượng
+print("Biểu tượng Topic 1:")
+icon(T1 / "icon_dinh_gia.png", ve_icon_dinh_gia, "#e7f4ee")
+icon(T1 / "icon_tim_nha.png", ve_icon_tim_nha, "#e4eefb")
+icon(T1 / "icon_duyet_tin.png", ve_icon_duyet_tin, "#efe9fb")
+icon(T1 / "icon_mat_bang_gia.png", ve_icon_mat_bang_gia, "#fbf1dd")
+icon(T1 / "icon_ve_ung_dung.png", ve_icon_ve_ung_dung, "#e9eef4")
+print("Biểu tượng Project 2:")
+icon(P2 / "icon_tim_cty.png", ve_icon_tim_cty, "#e4eefb")
+icon(P2 / "icon_doc_danh_gia.png", ve_icon_doc_danh_gia, "#fdeae3")
+icon(P2 / "icon_thi_truong.png", ve_icon_thi_truong, "#e7f4ee")
+icon(P2 / "icon_ve_ung_dung.png", ve_icon_ve_ung_dung, "#e9eef4")
